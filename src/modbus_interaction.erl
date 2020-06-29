@@ -31,13 +31,14 @@ start_link(Ip_addr) when is_tuple(Ip_addr) ->
 %% Подключение к Modbus TCP серверу
 connect(Host, Port) -> 
     case {_, Socket} = gen_tcp:connect(Host, Port, ?SOCK_OPTS) of
-        {ok, _} -> io:format("Connection fine...~n");
+        {ok, _} -> 
+            io:format("Connection fine...~n"),
+            loop(Socket);
         {error, Reason} -> 
-            error_logger:error_msg("~w: Connection failed because ~w~n", [?MODULE, Reason]),
+            error_logger:error_msg("~w: connection failed because ~w~n", [?MODULE, Reason]),
             timer:sleep(1000),
             connect(Host, Port)
-    end,
-    loop(Socket).
+    end.
 
 
 loop(Socket) ->
@@ -91,16 +92,15 @@ loop(Socket) ->
 
             loop(Socket);
 
-        % Не дописано
+        % Modbus код функции 10 (запись нескольких Holding regs)
         {writesH, _Pid, Msg} ->
             [Device_num, First_reg_num, Values] = Msg,
             Reg_quantity = length(Values),
             Len = Reg_quantity * 2,
 
-            Packet_without_values = <<1:16, 0:16, ?FUN_CODE_WRITE_HREGS:16, Device_num:8,
-                            ?FUN_CODE_WRITE_HREG:8, First_reg_num:16, Reg_quantity:16, Len:8>>,
-            Bin_values = list_to_binary(Values),
-            PacketMsg = <<Packet_without_values/binary, Bin_values/binary>>,
+            Packet_without_values = <<1:16, 0:16, 16#0B:16, Device_num:8,
+                            ?FUN_CODE_WRITE_HREGS:8, First_reg_num:16, Reg_quantity:16, Len:8>>,
+            PacketMsg = secondary_functions:list_to_bin16(Values, Packet_without_values),
 
             case gen_tcp:send(Socket, PacketMsg) of
                 ok ->
@@ -215,6 +215,10 @@ loop(Socket) ->
                 % Произошла успешная запись Holding reg 
                 <<1:16, 0:16, 6:16, _Device_num:8, ?FUN_CODE_WRITE_HREG:8, _:16, Var:16>> -> 
                     io:format("~w writed in register~n", [Var]);
+
+                % Произошла успешная запись Holding regs
+                <<1:16, 0:16, 6:16, _Device_num:8, ?FUN_CODE_WRITE_HREGS:8, _:16, Quantity:16>> -> 
+                    io:format("~w bytes was written~n", [Quantity]);
 
                 % Произошло успешное чтение Holding regs
                 <<1:16, 0:16, _:16, _Device_num:8, ?FUN_CODE_READ_HREGS:8, _:8, Data/binary>> ->
