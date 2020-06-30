@@ -1,2 +1,9 @@
-# Modbus_interaction
-Реализация взаимодействия с устройствами по протоколу Modbus TCP
+modbus_interaction
+=====
+
+An OTP library
+
+Build
+-----
+
+    $ rebar3 compile
