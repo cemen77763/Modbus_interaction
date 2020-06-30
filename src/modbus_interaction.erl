@@ -1,27 +1,46 @@
+%%% ----------------------------------------------------------------------- %%%
+%%% author: Kekeev Semyon (s.kekeev@g.nsu.ru)                               %%%
+%%% description: This module implements interaction with devices according  %%%
+%%% to the Modbus TCP protocol                                              %%%
+%%% ----------------------------------------------------------------------- %%%
 
 -module(modbus_interaction).
 
 %% Интерфейс
--export([start_link/0, read_Hreg/2, read_Hregs/3, write_Creg/3,
-        write_Hreg/3, read_Ireg/2, read_Iregs/3, close_connection/0,
-        read_Creg/2, read_Isreg/2, write_Hregs/3, start_link/1]).
+-export([start_link/0,
+        start_link/1,
+        close_connection/0,
+        read_Hreg/2,
+        read_Hregs/3, 
+        read_Ireg/2,
+        read_Iregs/3,
+        read_Creg/2,
+        read_Isreg/2,
+        write_Creg/3,
+        write_Hreg/3,
+        write_Hregs/3
+        ]).
 
 %% Для внутреннего использования
 -export([connect/2]).
-
--include("../include/modbus.hrl").
+ 
+-include("modbus_functional_codes.hrl").  
 
 -define(PORT, 502).
--define(IP_ADDR, "localhost").
--define(SOCK_OPTS, [binary, {active, true}, {packet, raw},
-                    {reuseaddr, true}, {nodelay, true}]).
 
-% 01, 02, 03, 04, 05, 06, 10
+-define(IP_ADDR, "localhost").
+
+-define(SOCK_OPTS, [binary, 
+                    {active, true},
+                    {packet, raw},
+                    {reuseaddr, true},
+                    {nodelay, true}]).
 
 
 start_link() ->
     Pid = spawn(?MODULE, connect, [?IP_ADDR, ?PORT]),
     register(?MODULE, Pid).
+
 
 start_link(Ip_addr) when is_tuple(Ip_addr) ->
     Pid = spawn(?MODULE, connect, [Ip_addr, ?PORT]),
@@ -100,7 +119,7 @@ loop(Socket) ->
 
             Packet_without_values = <<1:16, 0:16, 16#0B:16, Device_num:8,
                             ?FUN_CODE_WRITE_HREGS:8, First_reg_num:16, Reg_quantity:16, Len:8>>,
-            PacketMsg = secondary_functions:list_to_bin16(Values, Packet_without_values),
+            PacketMsg = bin_conversion:list_to_bin16(Values, Packet_without_values),
 
             case gen_tcp:send(Socket, PacketMsg) of
                 ok ->
@@ -149,23 +168,25 @@ loop(Socket) ->
         {writeC, _Pid, Msg} ->
             [Device_num, First_reg_num, Value] = Msg,
 
+            Var = 
             case Value of
-                0 -> Var = <<0:16>>;
-                1 -> Var = <<16#FF:8, 0:8>>;
+                0 -> <<0:16>>;
+                1 -> <<16#FF:8, 0:8>>;
                 _ ->
-                    Var = 0,
-                    error_logger:error_msg("Wrong value ~w~n", [Var]),
-                    loop(Socket)
+                    error_logger:error_msg("Wrong value ~w~n", [Value]),
+                    {error, wrong_value}
             end,
 
-            case gen_tcp:send(Socket, <<1:16, 0:16, 6:16, Device_num:8,
-                            ?FUN_CODE_WRITE_COIL:8, First_reg_num:16, Var:16>>) of
-                ok ->
-                    io:format("Trying write ~w Input status in device #~w~n", [Var, Device_num]);
-                {error, Reason} -> 
-                    error_logger:error_msg("Can't read input status because ~w~n", [Reason]),
-                    gen_tcp:close(Socket),
-                    connect(?IP_ADDR, ?PORT)
+            if Var =/= {error, wrong_value} ->
+                case gen_tcp:send(Socket, <<1:16, 0:16, 6:16, Device_num:8,
+                                ?FUN_CODE_WRITE_COIL:8, First_reg_num:16, Var:16>>) of
+                    ok ->
+                        io:format("Trying write ~w Input status in device #~w~n", [Var, Device_num]);
+                    {error, Reason} -> 
+                        error_logger:error_msg("Can't read input status because ~w~n", [Reason]),
+                        gen_tcp:close(Socket),
+                        connect(?IP_ADDR, ?PORT)
+                end
             end,
 
             loop(Socket);
