@@ -2,9 +2,11 @@
 %%% @doc This module implement interaction with devices according to the Modbus TCP protocol  %%%
 %%% ----------------------------------------------------------------------------------------- %%%
 
--module(modbus_interaction).
+-module(modbus_interaction_app).
 
--export([start/0,
+-behaviour(application).
+
+-export([start/2,
         read_Hreg/2,
         read_Hregs/3, 
         read_Ireg/2,
@@ -14,19 +16,23 @@
         write_Creg/3,
         write_Hreg/3,
         write_Hregs/3,
-        stop/0]).
+        stop/1]).
  
--define(SERVER, modbus).
+-define(SERVER, modbus_gen).
 
 
-start() ->
-    modbus_gen_server:start_link().
+start(_StartType, _StartArgs) ->
+    modbus_gen_server:start_link(),
+    modbus_interaction_sup:start_link().
 
+
+stop(_State) ->
+    gen_server:stop(?SERVER),
+    ok.
 
 %% Отправка сообщения для прочтения 1 Holding reg
 read_Hreg(Device_num, Reg_num) ->
-    gen_server:call(?SERVER, {readH, [Device_num, Reg_num]}),
-    ok.
+    gen_server:call(?SERVER, {readH, [Device_num, Reg_num]}).
 
 
 %% Отправка сообщения для прочтения N Holding regs
@@ -67,20 +73,10 @@ write_Creg(Device_num, Reg_num, Value) ->
 
 %% Отправка сообщения для прочтения Coil status
 read_Creg(Device_num, Reg_num) ->
-    gen_server:call(?SERVER, {readC, [Device_num, Reg_num]}),
-    ok.
+    gen_server:call(?SERVER, {readC, [Device_num, Reg_num]}).
 
 
 %% Отправка сообщения для прочтения Input status
 read_Isreg(Device_num, Reg_num) ->
-    gen_server:call(?SERVER, {readIs, [Device_num, Reg_num]}),
-    ok.
-
-
-stop() ->
-    gen_server:stop(?SERVER),
-    ok.
-
-
-
+    gen_server:call(?SERVER, {readIs, [Device_num, Reg_num]}).
 

@@ -18,7 +18,7 @@
          terminate/2,
          code_change/3]).
 
--define(SERVER, modbus).
+-define(SERVER, modbus_gen).
 
 -define(PORT, 502).
 
@@ -321,7 +321,7 @@ handle_info({tcp, _Socket, Msg}, State) ->
 
         % Неизвестное TCP сообщение
         Other -> 
-            error_logger:error_msg("Error: Process ~w got unknown tcp message ~w~n.", [self(), Other])
+            error_logger:error_msg("Error: Got unknown tcp message ~w~n.", [Other])
     end,
     {noreply, State};
 
@@ -331,8 +331,8 @@ handle_info({tcp_closed, _Socket}, State) ->
     erlang:send(self(), socket_connect_error),
     {noreply, State#state{connection = closed}};
 
-handle_info(_, State) ->
-    error_logger:error_msg("Error: Got unknown message~n."),
+handle_info(Msg, State) ->
+    error_logger:error_msg("Error: Got unknown message ~w~n.", [Msg]),
     {noreply, State}.
 
 
