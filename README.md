@@ -1,7 +1,7 @@
 modbus_interaction
 =====
 
-An OTP library
+An OTP library for Modbus TCP interaction with devices
 
 Build
 -----

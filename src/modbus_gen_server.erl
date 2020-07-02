@@ -1,9 +1,13 @@
+%%% ----------------------------------------------------------------------------------------- %%%
+%%% @doc Server for connecting to Modbus TCP devices                                          %%%
+%%% ----------------------------------------------------------------------------------------- %%%
 
 -module(modbus_gen_server).
 
 -behavior(gen_server).
 
 -include("gen_server.hrl").
+
 -include("modbus_functional_codes.hrl").
 
 -export([start_link/0,
@@ -216,11 +220,13 @@ handle_call({readIs, [Device_num, Reg_num]}, _From, State) ->
 
     end;
 
-handle_call(_Msg, _From, State) ->
+handle_call(_Msg, From, State) ->
+    error_logger:error_msg("Error: Got unknown message from ~w~n.", [From]),
     {reply, unknown_message, State}.
 
 
-handle_cast(_, State) ->
+handle_cast(_Msg, State) ->
+    error_logger:error_msg("Error: Got unknown message~n."),
     {noreply, State}.
 
 
@@ -237,10 +243,11 @@ handle_info(socket_connect_error, State) ->
             {noreply, State#state{connection = closed}}
     end;
 
+
 handle_info({tcp, _Socket, Msg}, State) ->
     case Msg of 
 
-        %% ----------------------------------УСПЕХ---------------------------------
+        %% ----------------------------------УСПЕХ-------------------------------- %%
         % Произошло успешное чтение Holding reg 
         <<1:16, 0:16, 5:16, _Device_num:8, ?FUN_CODE_READ_HREGS:8, 2:8, Data:16>> ->
             io:format("Data in single register is  ~w~n", [Data]);
@@ -279,38 +286,38 @@ handle_info({tcp, _Socket, Msg}, State) ->
         <<1:16, 0:16, 6:16, _Device_num:8, ?FUN_CODE_WRITE_COIL:8, _:16, Var:16>> ->
             io:format("~w writed in register~n", [Var]);
 
-        %% ----------------------------------НЕУДАЧА--------------------------------
+        %% ----------------------------------НЕУДАЧА-----------------------------  %%
         % Ошибка чтения Coil status 
         <<1:16, 0:16, 3:16, _Device_num:8, ?ERR_CODE_READ_COILS:8, Err_code:8>> ->
-            decrypton_error_code:decrypt(Err_code);
+            decryption_error_code:decrypt(Err_code);
 
         % Ошибка чтения Input status 
         <<1:16, 0:16, 3:16, _Device_num:8, ?ERR_CODE_READ_INPUTS:8, Err_code:8>> ->
-            decrypton_error_code:decrypt(Err_code);
+            decryption_error_code:decrypt(Err_code);
 
         % Ошибка чтения Holding regs 
         <<1:16, 0:16, 3:16, _Device_num:8, ?ERR_CODE_READ_HREGS:8, Err_code:8>> ->
-            decrypton_error_code:decrypt(Err_code);
+            decryption_error_code:decrypt(Err_code);
 
         % Ошибка чтения Input regs 
         <<1:16, 0:16, 3:16, _Device_num:8, ?ERR_CODE_READ_IREGS:8, Err_code:8>> ->
-            decrypton_error_code:decrypt(Err_code);
+            decryption_error_code:decrypt(Err_code);
 
         % Ошибка записи Coils status 
         <<1:16, 0:16, 3:16, _Device_num:8, ?ERR_CODE_WRITE_COIL:8, Err_code:8>> ->
-            decrypton_error_code:decrypt(Err_code);
+            decryption_error_code:decrypt(Err_code);
 
         % Ошибка записи Holding reg 
         <<1:16, 0:16, 3:16, _Device_num:8, ?ERR_CODE_WRITE_HREG:8, Err_code:8>> ->
-            decrypton_error_code:decrypt(Err_code);
+            decryption_error_code:decrypt(Err_code);
 
         % Ошибка записи Coil status 
         <<1:16, 0:16, 3:16, _Device_num:8, ?ERR_CODE_WRITE_COILS:8, Err_code:8>> ->
-            decrypton_error_code:decrypt(Err_code);
+            decryption_error_code:decrypt(Err_code);
 
         % Ошибка записи Holding regs 
         <<1:16, 0:16, 3:16, _Device_num:8, ?ERR_CODE_WRITE_HREGS:8, Err_code:8>> ->
-            decrypton_error_code:decrypt(Err_code);
+            decryption_error_code:decrypt(Err_code);
 
         % Неизвестное TCP сообщение
         Other -> 
@@ -325,6 +332,7 @@ handle_info({tcp_closed, _Socket}, State) ->
     {noreply, State#state{connection = closed}};
 
 handle_info(_, State) ->
+    error_logger:error_msg("Error: Got unknown message~n."),
     {noreply, State}.
 
 

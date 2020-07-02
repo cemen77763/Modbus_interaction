@@ -1,10 +1,9 @@
 %%% ----------------------------------------------------------------------------------------- %%%
-%%% @doc This module implements interaction with devices according to the Modbus TCP protocol %%%
+%%% @doc This module implement interaction with devices according to the Modbus TCP protocol  %%%
 %%% ----------------------------------------------------------------------------------------- %%%
 
 -module(modbus_interaction).
 
-%% Интерфейс
 -export([start/0,
         read_Hreg/2,
         read_Hregs/3, 
@@ -15,8 +14,7 @@
         write_Creg/3,
         write_Hreg/3,
         write_Hregs/3,
-        stop/0
-        ]).
+        stop/0]).
  
 -define(SERVER, modbus).
 
@@ -79,9 +77,9 @@ read_Isreg(Device_num, Reg_num) ->
     ok.
 
 
-%% Отравка сообщения для закрытия соединения с Modbus TCP сервером
 stop() ->
-    gen_server:stop(?SERVER).
+    gen_server:stop(?SERVER),
+    ok.
 
 
 
