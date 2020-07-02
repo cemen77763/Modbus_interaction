@@ -1,12 +1,13 @@
 %%% ----------------------------------------------------------------------------------------- %%%
 %%% @doc Server for connecting to Modbus TCP devices                                          %%%
+%%% @end                                                                                      %%%
 %%% ----------------------------------------------------------------------------------------- %%%
 
 -module(modbus_gen_server).
 
--behavior(gen_server).
+-behaviour(gen_server).
 
--include("gen_server.hrl").
+-include("gen_server_state.hrl").
 
 -include("modbus_functional_codes.hrl").
 

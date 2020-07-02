@@ -1,7 +1,7 @@
-%%%-------------------------------------------------------------------
-%% @doc modbus_interaction top level supervisor.
-%% @end
-%%%-------------------------------------------------------------------
+%%%-------------------------------------------------------------------%%%
+%%% @doc modbus_interaction top level supervisor                      %%%
+%%% @end                                                              %%%
+%%%-------------------------------------------------------------------%%%
 
 -module(modbus_interaction_sup).
 
@@ -27,9 +27,14 @@ start_link() ->
 %%                  modules => modules()}   % optional
 init([]) ->
     SupFlags = #{strategy => one_for_all,
-                 intensity => 0,
-                 period => 1},
-    ChildSpecs = [],
+                 intensity => 3,
+                 period => 1000},
+    ChildSpecs = #{
+                    id => modbus_interaction,
+                    start => {modbus_interaction_app, start_link, []},
+                    restart => permanent,
+                    shutdown => 2000,
+                    type => worker,
+                    modules => [modbus_interaction]
+                  },
     {ok, {SupFlags, ChildSpecs}}.
-
-%% internal functions

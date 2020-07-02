@@ -1,6 +1,6 @@
 {application,modbus_interaction,
              [{description,"Application to interact with modbus TCP devices"},
-              {vsn,"1.2.2"},
+              {vsn,"1.2.3"},
               {registered,[]},
               {mod,{modbus_interaction_app,[]}},
               {applications,[kernel,stdlib]},
