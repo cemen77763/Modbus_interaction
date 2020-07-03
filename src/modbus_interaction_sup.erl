@@ -13,8 +13,10 @@
 
 -define(SERVER, ?MODULE).
 
+
 start_link() ->
     supervisor:start_link({local, ?SERVER}, ?MODULE, []).
+
 
 %% sup_flags() = #{strategy => strategy(),         % optional
 %%                 intensity => non_neg_integer(), % optional
@@ -25,16 +27,20 @@ start_link() ->
 %%                  shutdown => shutdown(), % optional
 %%                  type => worker(),       % optional
 %%                  modules => modules()}   % optional
+
+
 init([]) ->
-    SupFlags = #{strategy => one_for_all,
-                 intensity => 3,
-                 period => 1000},
-    ChildSpecs = #{
-                    id => modbus_interaction,
-                    start => {modbus_interaction_app, start_link, []},
-                    restart => permanent,
-                    shutdown => 2000,
-                    type => worker,
-                    modules => [modbus_interaction]
-                  },
+    SupFlags = #{
+        strategy => one_for_all,
+        intensity => 3,
+        period => 1000},
+
+    ChildSpecs = [#{
+        id => modbus,
+        start => {modbus_gen_server, start_link, []},
+        restart => permanent,
+        shutdown => 1000,
+        type => worker,
+        modules => []}],
+
     {ok, {SupFlags, ChildSpecs}}.
