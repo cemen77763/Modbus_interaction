@@ -16,15 +16,16 @@
     connection = closed,
     register_info = unknown}).
 
--export([start_link/0,
-         init/1,
-         handle_call/3,
-         handle_cast/2,
-         handle_info/2,
-         terminate/2,
-         code_change/3,
-         try_reconnect/1,
-         list_to_bin16/2]).
+-export([
+    start_link/0,
+    init/1,
+    handle_call/3,
+    handle_cast/2,
+    handle_info/2,
+    terminate/2,
+    code_change/3,
+    try_reconnect/1,
+    list_to_bin16/2]).
 
 -define(SERVER, modbus_gen).
 
@@ -172,21 +173,26 @@ handle_call({#function.write_coil, [Device_num, Reg_num, Value]}, _From, State) 
                     {error, wrong_value}
         end,
 
-    if Var =/= {error, wrong_value} -> 
-        Packet = <<1:16, 0:16, 6:16, Device_num:8, ?FUN_CODE_WRITE_COIL:8, Reg_num:16, Var:16>>,
-        case gen_tcp:send(State#state.socket, Packet) of
-                    
-            ok ->
-                error_logger:info_msg("Trying write ~w Coil status in device #~w~n", [Var, Device_num]),
-                {reply, ok, State};
+    if 
+        Var =/= {error, wrong_value} -> 
+            Packet = <<1:16, 0:16, 6:16, Device_num:8, ?FUN_CODE_WRITE_COIL:8, Reg_num:16, Var/binary>>,
+            case gen_tcp:send(State#state.socket, Packet) of
+                        
+                ok ->
+                    error_logger:info_msg("Trying write ~w Coil status in device #~w~n", [Var, Device_num]),
+                    {reply, ok, State};
 
-            {error, Reason} -> 
-                error_logger:error_msg("Can't read Coil status because ~w~n", [Reason]),
-                gen_tcp:close(State#state.socket),
-                {ok, Socket} = try_reconnect(State),
-                {reply, error, State#state{socket = Socket, connection = connect}}
+                {error, Reason} -> 
+                    error_logger:error_msg("Can't read Coil status because ~w~n", [Reason]),
+                    gen_tcp:close(State#state.socket),
+                    {ok, Socket} = try_reconnect(State),
+                    {reply, error, State#state{socket = Socket, connection = connect}}
 
-        end
+            end;
+
+        true -> 
+            {reply, error, State}
+
     end;
 
 handle_call({#function.read_coil, [Device_num, Reg_num]}, _From, State) ->
@@ -294,42 +300,42 @@ handle_info({tcp, _Socket, Msg}, State) ->
         %% ----------------------------------НЕУДАЧА-----------------------------  %%
         % Ошибка чтения Coil status 
         <<1:16, 0:16, 3:16, _Device_num:8, ?ERR_CODE_READ_COILS:8, Err_code:8>> ->
-            decryption_error_co:decrypt(Err_code),
+            decryption_error_code:decrypt(Err_code),
             {#function.read_coil, error};
 
         % Ошибка чтения Input status 
         <<1:16, 0:16, 3:16, _Device_num:8, ?ERR_CODE_READ_INPUTS:8, Err_code:8>> ->
-            decryption_error_d:decrypt(Err_code),
+            decryption_error_code:decrypt(Err_code),
             {#function.read_inputs, error};
 
         % Ошибка чтения Holding regs 
         <<1:16, 0:16, 3:16, _Device_num:8, ?ERR_CODE_READ_HREGS:8, Err_code:8>> ->
-            decryption_error_cd:decrypt(Err_code),
+            decryption_error_code:decrypt(Err_code),
             {#function.read_hregs, error};
 
         % Ошибка чтения Input regs 
         <<1:16, 0:16, 3:16, _Device_num:8, ?ERR_CODE_READ_IREGS:8, Err_code:8>> ->
-            decryption_cod:decrypt(Err_code),
+            decryption_error_code:decrypt(Err_code),
             {#function.read_iregs, error};
 
         % Ошибка записи Coils status 
         <<1:16, 0:16, 3:16, _Device_num:8, ?ERR_CODE_WRITE_COIL:8, Err_code:8>> ->
-            decryption_e_coe:decrypt(Err_code),
+            decryption_error_code:decrypt(Err_code),
             {#function.read_coil, error};
 
         % Ошибка записи Holding reg 
         <<1:16, 0:16, 3:16, _Device_num:8, ?ERR_CODE_WRITE_HREG:8, Err_code:8>> ->
-            decryptio_cod:decrypt(Err_code),
+            decryption_error_code:decrypt(Err_code),
             {#function.write_hreg, error};
 
         % Ошибка записи Coil status 
         <<1:16, 0:16, 3:16, _Device_num:8, ?ERR_CODE_WRITE_COILS:8, Err_code:8>> ->
-            decryptionror_cod:decrypt(Err_code),
+            decryption_error_code:decrypt(Err_code),
             {#function.write_coil, error};
 
         % Ошибка записи Holding regs 
         <<1:16, 0:16, 3:16, _Device_num:8, ?ERR_CODE_WRITE_HREGS:8, Err_code:8>> ->
-            decryptior_cod:decrypt(Err_code),
+            decryption_error_code:decrypt(Err_code),
             {#function.write_hregs, error};
 
         % Неизвестное TCP сообщение
@@ -356,8 +362,8 @@ terminate(_, State) ->
     ok.
 
 
-code_change(_OldVsn, _State, _Extra) ->
-    ok.
+code_change(_OldVsn, State, _Extra) ->
+    {ok, State}.
 
 
 %% ----------------------------------------------------------------- %%
@@ -373,10 +379,13 @@ try_reconnect(State) ->
     
     % Поодключение к Modbus TCP устройству
     case {_, Socket} = gen_tcp:connect(State#state.ip_addr, State#state.port, ?SOCK_OPTS) of
+
         {ok, _} ->
             error_logger:info_msg("Connection fine...~n"),
             {ok, Socket};
+        
         {error, Reason} -> 
             error_logger:error_msg("~w: connection failed because ~w~n", [?MODULE, Reason]),
             try_reconnect(State)
+
     end.

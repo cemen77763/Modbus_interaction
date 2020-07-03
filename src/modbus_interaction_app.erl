@@ -7,8 +7,9 @@
 
 -behaviour(application).
 
--export([start/2,
-        stop/1]).
+-export([
+    start/2,
+    stop/1]).
  
 -define(SERVER, modbus_gen).
 

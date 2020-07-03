@@ -7,3 +7,5 @@ Build
 -----
 
     $ rebar3 compile
+    or
+    $ mix compile

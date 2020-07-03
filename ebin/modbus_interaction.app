@@ -1,12 +1,10 @@
 {application,modbus_interaction,
-             [{description,"Application to interact with modbus TCP devices"},
-              {vsn,"1.2.4"},
-              {registered,[modbus_gen]},
-              {mod,{modbus_interaction_app,[]}},
-              {applications,[kernel,stdlib]},
-              {env,[]},
+             [{applications,[kernel,stdlib]},
               {modules,[decryption_error_code,modbus_gen_server,
                         modbus_interaction,modbus_interaction_app,
                         modbus_interaction_sup]},
-              {licenses,["Apache 2.0"]},
-              {links,[]}]}.
+              {vsn,"1.2.5"},
+              {mod,{modbus_interaction_app,[]}},
+              {registered,[modbus_gen]},
+              {description,["Application to interact with modbus TCP devices"]},
+              {licenses,["Apache 2.0"]}]}.

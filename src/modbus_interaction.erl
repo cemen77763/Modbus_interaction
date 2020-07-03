@@ -8,15 +8,15 @@
 -include("modbus_functional_codes.hrl").
 
 -export([
-        read_Hreg/2,
-        read_Hregs/3, 
-        read_Ireg/2,
-        read_Iregs/3,
-        read_Creg/2,
-        read_Isreg/2,
-        write_Creg/3,
-        write_Hreg/3,
-        write_Hregs/3]).
+    read_Hreg/2,
+    read_Hregs/3, 
+    read_Ireg/2,
+    read_Iregs/3,
+    read_Creg/2,
+    read_Isreg/2,
+    write_Creg/3,
+    write_Hreg/3,
+    write_Hregs/3]).
  
 -define(SERVER, modbus_gen).
 
