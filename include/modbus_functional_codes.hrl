@@ -1,4 +1,13 @@
-
+-record(function, {
+    read_coil = readC,
+    read_inputs = readIs,
+    read_hreg = readH,
+    read_hregs = readsH,
+    read_iregs = readsI,
+    read_ireg = readI,
+    write_coil = writeC,
+    write_hreg = writeH,
+    write_hregs = writesH}).
 
 -define(FUN_CODE_READ_COILS,    16#01).
 -define(FUN_CODE_READ_INPUTS,   16#02).
