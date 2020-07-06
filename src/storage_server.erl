@@ -31,9 +31,7 @@ init([]) ->
 
 
 handle_call(_, _From, S) ->
-    case dict:find(key, S) of 
-        true -> ok
-    end,
+    error_logger:error_msg("Got unknown message~n."),
     {reply, ok, S}.
 
 
