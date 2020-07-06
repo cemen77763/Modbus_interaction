@@ -19,15 +19,16 @@
 -export([
     start_link/0,
     init/1,
+    handle_continue/2,
     handle_call/3,
     handle_cast/2,
     handle_info/2,
     terminate/2,
-    code_change/3,
-    try_reconnect/1,
-    list_to_bin16/2]).
+    code_change/3]).
 
 -define(SERVER, modbus_gen).
+
+-define(STORAGE, storage_server).
 
 -define(PORT, 502).
 
@@ -45,66 +46,64 @@ start_link() ->
 
 
 init([]) ->
-    State = #state{ip_addr = ?IP_ADDR, port = ?PORT},
-    erlang:send(self(), try_connect),
-    {ok, State}.
+    S = #state{ip_addr = ?IP_ADDR, port = ?PORT},
+    {ok, S, {continue, try_connect}}.
 
 
-handle_call({#function.read_hreg, [Device_num, Reg_num]}, _From, State) ->
-    Packet = <<1:16, 0:16, 6:16, Device_num:8, ?FUN_CODE_READ_HREGS:8, Reg_num:16, 1:16>>,
+handle_continue(try_connect, S) ->
+    {noreply, try_reconnect(S)}.
+
+
+handle_call(Fun = #read_hreg{device_num = Dev_num, register_num = Reg_num}, _From, S) ->
+    Packet = <<1:16, 0:16, 6:16, Dev_num:8, ?FUN_CODE_READ_HREGS:8, Reg_num:16, 1:16>>,
 
     % Modbus код функции 03 (чтение Holding reg)
-    case gen_tcp:send(State#state.socket, Packet) of
-
+    case gen_tcp:send(S#state.socket, Packet) of
         ok -> 
-            error_logger:info_msg("Trying read device #~w, holding register #~w~n", [Device_num, Reg_num]),
-            {reply, ok, State};
+            error_logger:info_msg("Trying read device #~w, holding register #~w~n", [Dev_num, Reg_num]),
+            gen_server:call(?STORAGE, Fun),
+            {reply, ok, S};
 
         {error, Reason} -> 
             error_logger:error_msg("Can't read holding register because ~w~n", [Reason]),
-            gen_tcp:close(State#state.socket),
-            {ok, Socket} = try_reconnect(State),
-            {reply, error, State#state{socket = Socket, connection = connect}}
+            gen_tcp:close(S#state.socket),
+            {reply, error, try_reconnect(S)}
 
     end;
 
-handle_call({#function.read_hregs, [Device_num, Reg_num, Quantity]}, _From, State) ->
+handle_call(#read_hregs{device_num = Device_num, register_num = Reg_num, quantity = Quantity}, _From, S) ->
     Packet = <<1:16, 0:16, 6:16, Device_num:8, ?FUN_CODE_READ_HREGS:8, Reg_num:16, Quantity:16>>,
 
     % Modbus код функции 03 (чтение нескольких Holding regs)
-    case gen_tcp:send(State#state.socket, Packet) of
-                
+    case gen_tcp:send(S#state.socket, Packet) of                
         ok ->
-            error_logger:info_msg("Trying read ~w Holding registers in device #~w~n", [Quantity, Device_num]),
-            {reply, ok, State};
+            error_logger:info_msg("Trying read ~w holding registers in device #~w~n", [Quantity, Device_num]),
+            {reply, ok, S};
 
         {error, Reason} -> 
             error_logger:error_msg("Can't read holding registers because ~w~n", [Reason]),
-            gen_tcp:close(State#state.socket),
-            {ok, Socket} = try_reconnect(State),
-            {reply, error, State#state{socket = Socket, connection = connect}}
+            gen_tcp:close(S#state.socket),
+            {reply, error, try_reconnect(S)}
 
     end;
 
-handle_call({#function.write_hreg, [Device_num, Reg_num, Var]}, _From, State) ->
-    Packet = <<1:16, 0:16, 6:16, Device_num:8, ?FUN_CODE_WRITE_HREG:8, Reg_num:16, Var:16>>,
+handle_call(#write_hreg{device_num = Device_num, register_num = Reg_num, value = Value}, _From, S) ->
+    Packet = <<1:16, 0:16, 6:16, Device_num:8, ?FUN_CODE_WRITE_HREG:8, Reg_num:16, Value:16>>,
 
     % Modbus код функции 06 (запись Holding regs)
-    case gen_tcp:send(State#state.socket, Packet) of
-                
+    case gen_tcp:send(S#state.socket, Packet) of               
         ok ->
-            error_logger:info_msg("Trying rewrire device #~w, Holding registers #~w~n", [Device_num, Reg_num]),
-            {reply, ok, State};
+            error_logger:info_msg("Trying rewrire device #~w, holding registers #~w~n", [Device_num, Reg_num]),
+            {reply, ok, S};
 
         {error, Reason} -> 
             error_logger:error_msg("Can't write holding register because ~w~n", [Reason]),
-            gen_tcp:close(State#state.socket),
-            {ok, Socket} = try_reconnect(State),
-            {reply, error, State#state{socket = Socket, connection = connect}}
+            gen_tcp:close(S#state.socket),
+            {reply, error, try_reconnect(S)}
 
     end;
 
-handle_call({#function.write_hregs, [Device_num, Reg_num, Values]}, _From, State) ->
+handle_call(#write_hregs{device_num = Device_num, register_num = Reg_num, values = Values}, _From, S) ->
     % Modbus код функции 10 (запись нескольких Holding regs)
     Reg_quantity = length(Values),
     Len = Reg_quantity * 2,
@@ -112,57 +111,51 @@ handle_call({#function.write_hregs, [Device_num, Reg_num, Values]}, _From, State
     Packet_without_values = <<1:16, 0:16, 16#0B:16, Device_num:8, ?FUN_CODE_WRITE_HREGS:8, Reg_num:16, Reg_quantity:16, Len:8>>,
     PacketMsg = list_to_bin16(Values, Packet_without_values),
 
-    case gen_tcp:send(State#state.socket, PacketMsg) of
-                
+    case gen_tcp:send(S#state.socket, PacketMsg) of           
         ok ->
-            error_logger:info_msg("Trying rewrire device #~w, Holding register #~w, values: ~w~n", [Device_num, Reg_num, Values]),
-            {reply, ok, State};
+            error_logger:info_msg("Trying rewrire device #~w, holding register #~w, values: ~w~n", [Device_num, Reg_num, Values]),
+            {reply, ok, S};
 
         {error, Reason} -> 
             error_logger:error_msg("Can't write holding registers because ~w~n", [Reason]),
-            gen_tcp:close(State#state.socket),
-            {ok, Socket} = try_reconnect(State),
-            {reply, error, State#state{socket = Socket, connection = connect}}
+            gen_tcp:close(S#state.socket),
+            {reply, error, try_reconnect(S)}
 
     end;
 
-handle_call({#function.read_ireg, [Device_num, Reg_num]}, _From, State) ->
+handle_call(#read_ireg{device_num = Device_num, register_num = Reg_num}, _From, S) ->
     Packet = <<1:16, 0:16, 6:16, Device_num:8, ?FUN_CODE_READ_IREGS:8, Reg_num:16, 1:16>>,
 
     % Modbus код функции 04 (чтение Input reg)
-    case gen_tcp:send(State#state.socket, Packet) of
-
+    case gen_tcp:send(S#state.socket, Packet) of
         ok -> 
-            error_logger:info_msg("Trying read device #~w, Input register #~w~n", [Device_num, Reg_num]),
-            {reply, ok, State};
+            error_logger:info_msg("Trying read device #~w, input register #~w~n", [Device_num, Reg_num]),
+            {reply, ok, S};
 
         {error, Reason} -> 
             error_logger:error_msg("Can't read input register because ~w~n", [Reason]),
-            gen_tcp:close(State#state.socket),
-            {ok, Socket} = try_reconnect(State),
-            {reply, error, State#state{socket = Socket, connection = connect}}
+            gen_tcp:close(S#state.socket),
+            {reply, error, try_reconnect(S)}
 
     end;
 
-handle_call({#function.read_iregs, [Device_num, Reg_num, Quantity]}, _From, State) ->
+handle_call(#read_iregs{device_num = Device_num, register_num = Reg_num, quantity = Quantity}, _From, S) ->
     Packet = <<1:16, 0:16, 6:16, Device_num:8, ?FUN_CODE_READ_IREGS:8, Reg_num:16, Quantity:16>>,
 
     % Modbus код функции 04 (чтение нескольких Input regs)
-    case gen_tcp:send(State#state.socket, Packet) of
-
+    case gen_tcp:send(S#state.socket, Packet) of
         ok -> 
-            error_logger:info_msg("Trying read ~w Input registers in device #~w~n", [Quantity, Device_num]),
-            {reply, ok, State};
+            error_logger:info_msg("Trying read ~w input registers in device #~w~n", [Quantity, Device_num]),
+            {reply, ok, S};
 
         {error, Reason} -> 
             error_logger:error_msg("Can't read input registers because ~w~n", [Reason]),
-            gen_tcp:close(State#state.socket),
-            {ok, Socket} = try_reconnect(State),
-            {reply, error, State#state{socket = Socket, connection = connect}}
+            gen_tcp:close(S#state.socket),
+            {reply, error, try_reconnect(S)}
 
     end;
 
-handle_call({#function.write_coil, [Device_num, Reg_num, Value]}, _From, State) ->
+handle_call(#write_coil{device_num = Device_num, register_num = Reg_num, value = Value}, _From, S) ->
     % Modbus код функции 05 (запись Coil status)
     Var = 
         case Value of
@@ -176,84 +169,74 @@ handle_call({#function.write_coil, [Device_num, Reg_num, Value]}, _From, State) 
     if 
         Var =/= {error, wrong_value} -> 
             Packet = <<1:16, 0:16, 6:16, Device_num:8, ?FUN_CODE_WRITE_COIL:8, Reg_num:16, Var/binary>>,
-            case gen_tcp:send(State#state.socket, Packet) of
-                        
+            case gen_tcp:send(S#state.socket, Packet) of                       
                 ok ->
-                    error_logger:info_msg("Trying write ~w Coil status in device #~w~n", [Var, Device_num]),
-                    {reply, ok, State};
+                    error_logger:info_msg("Trying write ~w coil status in device #~w~n", [Var, Device_num]),
+                    {reply, ok, S};
 
                 {error, Reason} -> 
                     error_logger:error_msg("Can't read Coil status because ~w~n", [Reason]),
-                    gen_tcp:close(State#state.socket),
-                    {ok, Socket} = try_reconnect(State),
-                    {reply, error, State#state{socket = Socket, connection = connect}}
+                    gen_tcp:close(S#state.socket),
+                    {reply, error, try_reconnect(S)}
 
             end;
 
         true -> 
-            {reply, error, State}
+            {reply, error, S}
 
     end;
 
-handle_call({#function.read_coil, [Device_num, Reg_num]}, _From, State) ->
+handle_call(#read_coil{device_num = Device_num, register_num = Reg_num}, _From, S) ->
     Packet = <<1:16, 0:16, 4:16, Device_num:8, ?FUN_CODE_READ_COILS:8, Reg_num:16>>,
 
     % Modbus код функции 01 (чтение Coil status)
-    case gen_tcp:send(State#state.socket, Packet) of
-
+    case gen_tcp:send(S#state.socket, Packet) of
         ok -> 
-            error_logger:info_msg("Trying read device #~w, Coil status #~w~n", [Device_num, Reg_num]),
-            {reply, ok, State};
+            error_logger:info_msg("Trying read device #~w, coil status #~w~n", [Device_num, Reg_num]),
+            {reply, ok, S};
 
         {error, Reason} -> 
             error_logger:error_msg("Can't read coil status because ~w~n", [Reason]),
-            gen_tcp:close(State#state.socket),
-            {ok, Socket} = try_reconnect(State),
-            {reply, error, State#state{socket = Socket, connection = connect}}
+            gen_tcp:close(S#state.socket),
+            {reply, error, try_reconnect(S)}
 
     end;
 
-handle_call({#function.read_inputs, [Device_num, Reg_num]}, _From, State) ->
+handle_call(#read_inputs{device_num = Device_num, register_num = Reg_num}, _From, S) ->
     Packet = <<1:16, 0:16, 4:16, Device_num:8, ?FUN_CODE_READ_INPUTS:8, Reg_num:16>>,
 
     % Modbus код функции 02 (чтение Input status)
-    case gen_tcp:send(State#state.socket, Packet) of
-
+    case gen_tcp:send(S#state.socket, Packet) of
         ok -> 
-            error_logger:info_msg("Trying read device #~w, Input status #~w~n", [Device_num, Reg_num]),
-            {reply, ok, State};
+            error_logger:info_msg("Trying read device #~w, input status #~w~n", [Device_num, Reg_num]),
+            {reply, ok, S};
 
         {error, Reason} -> 
             error_logger:error_msg("Can't read input status because ~w~n", [Reason]),
-            gen_tcp:close(State#state.socket),
-            {ok, Socket} = try_reconnect(State),
-            {reply, error, State#state{socket = Socket, connection = connect}}
+            gen_tcp:close(S#state.socket),
+            {reply, error, try_reconnect(S)}
 
     end;
 
-handle_call(_Msg, From, State) ->
-    error_logger:error_msg("Error: Got unknown message from ~w~n.", [From]),
-    {reply, unknown_message, State}.
+handle_call(_Msg, From, S) ->
+    error_logger:error_msg("Got unknown message from ~w~n.", [From]),
+    {reply, unknown_message, S}.
 
 
-handle_cast(_Msg, State) ->
-    error_logger:error_msg("Error: Got unknown message~n."),
-    {noreply, State}.
+handle_cast(_Msg, S) ->
+    error_logger:error_msg("Got unknown message~n."),
+    {noreply, S}.
 
 
-handle_info(try_connect, State) ->
-    {ok, Socket} = try_reconnect(State),
-    {noreply, State#state{socket = Socket, connection = connect}};
-
-handle_info({tcp, _Socket, Msg}, State) ->
+handle_info({tcp, _Socket, Msg}, S) ->
     ReturnMsg = 
     case Msg of 
 
         %% ----------------------------------УСПЕХ-------------------------------- %%
         % Произошло успешное чтение Holding reg 
-        <<1:16, 0:16, 5:16, _Device_num:8, ?FUN_CODE_READ_HREGS:8, 2:8, Data:16>> ->
+        <<1:16, 0:16, 5:16, Device_num:8, ?FUN_CODE_READ_HREGS:8, 2:8, Data:16>> ->
             error_logger:info_msg("Data in single register is  ~w~n", [Data]),
-            {#function.read_hreg, Data};
+            gen_server:call(?STORAGE, {Device_num, Data});
 
         % Произошла успешная запись Holding reg 
         <<1:16, 0:16, 6:16, _Device_num:8, ?FUN_CODE_WRITE_HREG:8, _:16, Var:16>> -> 
@@ -301,69 +284,68 @@ handle_info({tcp, _Socket, Msg}, State) ->
         % Ошибка чтения Coil status 
         <<1:16, 0:16, 3:16, _Device_num:8, ?ERR_CODE_READ_COILS:8, Err_code:8>> ->
             decryption_error_code:decrypt(Err_code),
-            {#function.read_coil, error};
+            {#function.read_coil, error, [?ERR_CODE_READ_COILS, Err_code]};
 
         % Ошибка чтения Input status 
         <<1:16, 0:16, 3:16, _Device_num:8, ?ERR_CODE_READ_INPUTS:8, Err_code:8>> ->
             decryption_error_code:decrypt(Err_code),
-            {#function.read_inputs, error};
+            {#function.read_inputs, error, [?ERR_CODE_READ_INPUTS, Err_code]};
 
         % Ошибка чтения Holding regs 
         <<1:16, 0:16, 3:16, _Device_num:8, ?ERR_CODE_READ_HREGS:8, Err_code:8>> ->
             decryption_error_code:decrypt(Err_code),
-            {#function.read_hregs, error};
+            {#function.read_hregs, error, [?ERR_CODE_READ_HREGS, Err_code]};
 
         % Ошибка чтения Input regs 
         <<1:16, 0:16, 3:16, _Device_num:8, ?ERR_CODE_READ_IREGS:8, Err_code:8>> ->
             decryption_error_code:decrypt(Err_code),
-            {#function.read_iregs, error};
+            {#function.read_iregs, error, [?ERR_CODE_READ_IREGS, Err_code]};
 
         % Ошибка записи Coils status 
         <<1:16, 0:16, 3:16, _Device_num:8, ?ERR_CODE_WRITE_COIL:8, Err_code:8>> ->
             decryption_error_code:decrypt(Err_code),
-            {#function.read_coil, error};
+            {#function.read_coil, error, [?ERR_CODE_WRITE_COIL, Err_code]};
 
         % Ошибка записи Holding reg 
         <<1:16, 0:16, 3:16, _Device_num:8, ?ERR_CODE_WRITE_HREG:8, Err_code:8>> ->
             decryption_error_code:decrypt(Err_code),
-            {#function.write_hreg, error};
+            {#function.write_hreg, error, [?ERR_CODE_WRITE_HREG, Err_code]};
 
         % Ошибка записи Coil status 
         <<1:16, 0:16, 3:16, _Device_num:8, ?ERR_CODE_WRITE_COILS:8, Err_code:8>> ->
             decryption_error_code:decrypt(Err_code),
-            {#function.write_coil, error};
+            {#function.write_coil, error, [?ERR_CODE_WRITE_COILS, Err_code]};
 
         % Ошибка записи Holding regs 
         <<1:16, 0:16, 3:16, _Device_num:8, ?ERR_CODE_WRITE_HREGS:8, Err_code:8>> ->
             decryption_error_code:decrypt(Err_code),
-            {#function.write_hregs, error};
+            {#function.write_hregs, error, [?ERR_CODE_WRITE_HREGS, Err_code]};
 
         % Неизвестное TCP сообщение
         Other -> 
-            error_logger:error_msg("Error: Got unknown tcp message ~w~n.", [Other]),
+            error_logger:error_msg("Got unknown tcp message ~w~n.", [Other]),
             {unknown}
     end,
 
-    {noreply, State#state{register_info = ReturnMsg}};
+    {noreply, S#state{register_info = ReturnMsg}};
 
-handle_info({tcp_closed, _Socket}, State) ->
-    gen_tcp:close(State#state.socket),
-    error_logger:error_msg("Error: ~w was closed.", [State#state.socket]),
-    {ok, Socket} = try_reconnect(State),
-    {noreply, State#state{socket = Socket, connection = connect}};
+handle_info({tcp_closed, _Socket}, S) ->
+    gen_tcp:close(S#state.socket),
+    error_logger:error_msg("~w was closed.", [S#state.socket]),
+    {noreply, try_reconnect(S)};
 
-handle_info(Msg, State) ->
-    error_logger:error_msg("Error: Got unknown message ~w~n.", [Msg]),
-    {noreply, State}.
+handle_info(Msg, S) ->
+    error_logger:error_msg("Got unknown message ~w~n.", [Msg]),
+    {noreply, S}.
 
 
-terminate(_, State) ->
-    gen_tcp:close(State#state.socket),
+terminate(_Reason, S) ->
+    gen_tcp:close(S#state.socket),
     ok.
 
 
-code_change(_OldVsn, State, _Extra) ->
-    {ok, State}.
+code_change(_OldVsn, S, _Extra) ->
+    {ok, S}.
 
 
 %% ----------------------------------------------------------------- %%
@@ -375,17 +357,27 @@ list_to_bin16([H | T], Acc) ->
     list_to_bin16(T, <<Acc/binary, H:16>>).
 
 
-try_reconnect(State) ->
-    
+try_reconnect(S) ->
     % Поодключение к Modbus TCP устройству
-    case {_, Socket} = gen_tcp:connect(State#state.ip_addr, State#state.port, ?SOCK_OPTS) of
-
+    case {_, Socket} = gen_tcp:connect(S#state.ip_addr, S#state.port, ?SOCK_OPTS) of
         {ok, _} ->
             error_logger:info_msg("Connection fine...~n"),
-            {ok, Socket};
-        
-        {error, Reason} -> 
-            error_logger:error_msg("~w: connection failed because ~w~n", [?MODULE, Reason]),
-            try_reconnect(State)
+            S#state{socket = Socket, connection = connect};
+
+        {error, _Reason} ->
+            error_logger:error_msg("Connection was broken"), 
+            try_reconnect(S, 1)
+
+    end.
+
+try_reconnect(S, _) ->
+    % Поодключение к Modbus TCP устройству
+    case {_, Socket} = gen_tcp:connect(S#state.ip_addr, S#state.port, ?SOCK_OPTS) of
+        {ok, _} ->
+            error_logger:info_msg("Connection fine...~n"),
+            S#state{socket = Socket, connection = connect};
+
+        {error, _Reason} ->
+            try_reconnect(S, 1)
 
     end.

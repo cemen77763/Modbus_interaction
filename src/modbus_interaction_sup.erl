@@ -41,6 +41,13 @@ init([]) ->
         restart => permanent,
         shutdown => 1000,
         type => worker,
+        modules => []},
+
+        #{id => modbus_storage,
+        start => {storage_server, start_link, []},
+        restart => permanent,
+        shutdown => 1000,
+        type => worker,
         modules => []}],
 
     {ok, {SupFlags, ChildSpecs}}.

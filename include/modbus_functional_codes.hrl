@@ -1,13 +1,54 @@
 -record(function, {
+    read_hreg = readH,
     read_coil = readC,
     read_inputs = readIs,
-    read_hreg = readH,
     read_hregs = readsH,
     read_iregs = readsI,
     read_ireg = readI,
     write_coil = writeC,
     write_hreg = writeH,
     write_hregs = writesH}).
+
+-record(read_hreg, {
+    device_num,
+    register_num}).
+
+-record(read_hregs, {
+    device_num,
+    register_num,
+    quantity}).
+
+-record(write_hreg, {
+    device_num,
+    register_num,
+    value}).
+
+-record(write_hregs, {
+    device_num,
+    register_num,
+    values}).
+
+-record(read_ireg, {
+    device_num,
+    register_num}).
+
+-record(read_iregs, {
+    device_num,
+    register_num,
+    quantity}).
+
+-record(write_coil, {
+    device_num,
+    register_num,
+    value}).
+
+-record(read_coil, {
+    device_num,
+    register_num}).
+
+-record(read_inputs, {
+    device_num,
+    register_num}).
 
 -define(FUN_CODE_READ_COILS,    16#01).
 -define(FUN_CODE_READ_INPUTS,   16#02).

@@ -13,6 +13,8 @@
  
 -define(SERVER, modbus_gen).
 
+-define(STORAGE, storage_server).
+
 
 start(_StartType, _StartArgs) ->
     modbus_interaction_sup:start_link().
@@ -20,6 +22,7 @@ start(_StartType, _StartArgs) ->
 
 stop(_State) ->
     gen_server:stop(?SERVER),
+    gen_server:stop(?STORAGE),
     ok.
 
 
