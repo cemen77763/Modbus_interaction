@@ -1,7 +1,7 @@
 {application, modbus_interaction, [
     {description, "Application to interact with modbus TCP devices"},
-    {vsn, "1.2.5"},
-    {registered, [modbus_gen]},
+    {vsn, "1.2.6"},
+    {registered, [modbus_gen, storage_server]},
     {mod, {modbus_interaction_app, []}},
     {applications, [
         kernel,

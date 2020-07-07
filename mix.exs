@@ -4,7 +4,7 @@ defmodule ModbusInteraction.MixProject do
     def project do
         [
         app: :modbus_interaction,
-        version: "1.2.5",
+        version: "1.2.6",
         language: :erlang,
         start_permanent: Mix.env() == :prod,
         deps: deps()]
@@ -14,7 +14,7 @@ defmodule ModbusInteraction.MixProject do
     def application do
         [
         mod: {:modbus_interaction_app, []},
-        registered: [:modbus_gen],
+        registered: [:modbus_gen, :storage_server],
         description: ['Application to interact with modbus TCP devices'],
         licenses: ['Apache 2.0']]
     end

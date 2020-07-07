@@ -1,13 +1,3 @@
--record(function, {
-    read_hreg = readH,
-    read_coil = readC,
-    read_inputs = readIs,
-    read_hregs = readsH,
-    read_iregs = readsI,
-    read_ireg = readI,
-    write_coil = writeC,
-    write_hreg = writeH,
-    write_hregs = writesH}).
 
 -record(read_hreg, {
     device_num,

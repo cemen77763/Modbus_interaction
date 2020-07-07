@@ -54,14 +54,13 @@ handle_continue(try_connect, S) ->
     {noreply, try_reconnect(S)}.
 
 
-handle_call(Fun = #read_hreg{device_num = Dev_num, register_num = Reg_num}, _From, S) ->
+handle_call(#read_hreg{device_num = Dev_num, register_num = Reg_num}, _From, S) ->
     Packet = <<1:16, 0:16, 6:16, Dev_num:8, ?FUN_CODE_READ_HREGS:8, Reg_num:16, 1:16>>,
 
     % Modbus код функции 03 (чтение Holding reg)
     case gen_tcp:send(S#state.socket, Packet) of
         ok -> 
             error_logger:info_msg("Trying read device #~w, holding register #~w~n", [Dev_num, Reg_num]),
-            gen_server:call(?STORAGE, Fun),
             {reply, ok, S};
 
         {error, Reason} -> 
@@ -199,7 +198,7 @@ handle_call(#read_coil{device_num = Device_num, register_num = Reg_num}, _From, 
             error_logger:error_msg("Can't read coil status because ~w~n", [Reason]),
             gen_tcp:close(S#state.socket),
             {reply, error, try_reconnect(S)}
-
+        
     end;
 
 handle_call(#read_inputs{device_num = Device_num, register_num = Reg_num}, _From, S) ->
@@ -219,115 +218,97 @@ handle_call(#read_inputs{device_num = Device_num, register_num = Reg_num}, _From
     end;
 
 handle_call(_Msg, From, S) ->
-    error_logger:error_msg("Got unknown message from ~w~n.", [From]),
+    error_logger:error_msg("Got unknown message from ~w~.n", [From]),
     {reply, unknown_message, S}.
 
 
 handle_cast(_Msg, S) ->
-    error_logger:error_msg("Got unknown message~n."),
+    error_logger:error_msg("Got unknown message.~n"),
     {noreply, S}.
 
 
 handle_info({tcp, _Socket, Msg}, S) ->
-    ReturnMsg = 
     case Msg of 
 
         %% ----------------------------------УСПЕХ-------------------------------- %%
         % Произошло успешное чтение Holding reg 
         <<1:16, 0:16, 5:16, Device_num:8, ?FUN_CODE_READ_HREGS:8, 2:8, Data:16>> ->
-            error_logger:info_msg("Data in single register is  ~w~n", [Data]),
-            gen_server:call(?STORAGE, {Device_num, Data});
+            gen_server:call(?STORAGE, {#read_hreg{device_num = Device_num}, Data});
 
         % Произошла успешная запись Holding reg 
-        <<1:16, 0:16, 6:16, _Device_num:8, ?FUN_CODE_WRITE_HREG:8, _:16, Var:16>> -> 
-            error_logger:info_msg("~w writed in register~n", [Var]),
-            {#function.write_hreg, Var};
+        <<1:16, 0:16, 6:16, Device_num:8, ?FUN_CODE_WRITE_HREG:8, _:16, Var:16>> -> 
+            gen_server:call(?STORAGE, {#write_hreg{device_num = Device_num}, Var});
 
         % Произошла успешная запись Holding regs
-        <<1:16, 0:16, 6:16, _Device_num:8, ?FUN_CODE_WRITE_HREGS:8, _:16, Quantity:16>> -> 
-            error_logger:info_msg("~w bytes was written~n", [Quantity]),
-            {#function.write_hregs, Quantity};
+        <<1:16, 0:16, 6:16, Device_num:8, ?FUN_CODE_WRITE_HREGS:8, _:16, Quantity:16>> -> 
+            gen_server:call(?STORAGE, {#write_hregs{device_num = Device_num}, Quantity});
 
         % Произошло успешное чтение Holding regs
-        <<1:16, 0:16, _:16, _Device_num:8, ?FUN_CODE_READ_HREGS:8, _:8, Data/binary>> ->
-            %Переделать binary to integer (сейчас Data binary)
-            error_logger:info_msg("Data in registers is ~w~n", [Data]),
-            {#function.read_hregs, Data};
+        <<1:16, 0:16, _:16, Device_num:8, ?FUN_CODE_READ_HREGS:8, _:8, Data/binary>> ->
+            LData = bin_to_list16(Data, []),
+            gen_server:call(?STORAGE, {#read_hregs{device_num = Device_num}, LData});
 
         % Произошло успешное чтение Input reg
-        <<1:16, 0:16, 5:16, _Device_num:8, ?FUN_CODE_READ_IREGS:8, 2:8, Data:16>> ->
-            error_logger:info_msg("Data in single register is  ~w~n", [Data]),
-            {#function.read_ireg, Data};
+        <<1:16, 0:16, 5:16, Device_num:8, ?FUN_CODE_READ_IREGS:8, 2:8, Data:16>> ->
+            gen_server:call(?STORAGE, {#read_ireg{device_num = Device_num}, Data});
 
         % Произошло успешное чтение Input regs 
-        <<1:16, 0:16, _:16, _Device_num:8, ?FUN_CODE_READ_IREGS:8, _:8, Data/binary>> ->
-            %Переделать binary to integer (сейчас Data binary)
-            error_logger:info_msg("Data in registers is ~w~n", [Data]),
-            {#function.read_iregs, Data};
+        <<1:16, 0:16, _:16, Device_num:8, ?FUN_CODE_READ_IREGS:8, _:8, Data/binary>> ->
+            LData = bin_to_list16(Data, []),
+            gen_server:call(?STORAGE, {#read_iregs{device_num = Device_num}, LData});
 
         % Произошло успешное чтение Coil status 
-        <<1:16, 0:16, 4:16, _Device_num:8, ?FUN_CODE_READ_COILS:8, 1:8, Data>> ->
-            error_logger:info_msg("Data in coils status is  ~w~n", [Data]),
-            {#function.read_coil, Data};
+        <<1:16, 0:16, 4:16, Device_num:8, ?FUN_CODE_READ_COILS:8, 1:8, Data>> ->
+            gen_server:call(?STORAGE, {#read_coil{device_num = Device_num}, Data});
 
         % Произошло успешное чтение Input status
-        <<1:16, 0:16, 4:16, _Device_num:8, ?FUN_CODE_READ_INPUTS:8, 1:8, Data>> ->
-            error_logger:info_msg("Data in input status is  ~w~n", [Data]),
-            {#function.read_inputs, Data};
+        <<1:16, 0:16, 4:16, Device_num:8, ?FUN_CODE_READ_INPUTS:8, 1:8, Data>> ->
+            gen_server:call(?STORAGE, {#read_inputs{device_num = Device_num}, Data});
 
         % Произошла успешная запись Coil status
-        <<1:16, 0:16, 6:16, _Device_num:8, ?FUN_CODE_WRITE_COIL:8, _:16, Var:16>> ->
-            error_logger:info_msg("~w writed in register~n", [Var]),
-            {#function.write_coil, Var};
+        <<1:16, 0:16, 6:16, Device_num:8, ?FUN_CODE_WRITE_COIL:8, _:16, Var:16>> ->
+            gen_server:call(?STORAGE, {#write_coil{device_num = Device_num}, Var});
 
         %% ----------------------------------НЕУДАЧА-----------------------------  %%
         % Ошибка чтения Coil status 
         <<1:16, 0:16, 3:16, _Device_num:8, ?ERR_CODE_READ_COILS:8, Err_code:8>> ->
-            decryption_error_code:decrypt(Err_code),
-            {#function.read_coil, error, [?ERR_CODE_READ_COILS, Err_code]};
+            decryption_error_code:decrypt(Err_code);
 
         % Ошибка чтения Input status 
         <<1:16, 0:16, 3:16, _Device_num:8, ?ERR_CODE_READ_INPUTS:8, Err_code:8>> ->
-            decryption_error_code:decrypt(Err_code),
-            {#function.read_inputs, error, [?ERR_CODE_READ_INPUTS, Err_code]};
+            decryption_error_code:decrypt(Err_code);
 
         % Ошибка чтения Holding regs 
         <<1:16, 0:16, 3:16, _Device_num:8, ?ERR_CODE_READ_HREGS:8, Err_code:8>> ->
-            decryption_error_code:decrypt(Err_code),
-            {#function.read_hregs, error, [?ERR_CODE_READ_HREGS, Err_code]};
+            decryption_error_code:decrypt(Err_code);
 
         % Ошибка чтения Input regs 
         <<1:16, 0:16, 3:16, _Device_num:8, ?ERR_CODE_READ_IREGS:8, Err_code:8>> ->
-            decryption_error_code:decrypt(Err_code),
-            {#function.read_iregs, error, [?ERR_CODE_READ_IREGS, Err_code]};
+            decryption_error_code:decrypt(Err_code);
 
         % Ошибка записи Coils status 
         <<1:16, 0:16, 3:16, _Device_num:8, ?ERR_CODE_WRITE_COIL:8, Err_code:8>> ->
-            decryption_error_code:decrypt(Err_code),
-            {#function.read_coil, error, [?ERR_CODE_WRITE_COIL, Err_code]};
+            decryption_error_code:decrypt(Err_code);
 
         % Ошибка записи Holding reg 
         <<1:16, 0:16, 3:16, _Device_num:8, ?ERR_CODE_WRITE_HREG:8, Err_code:8>> ->
-            decryption_error_code:decrypt(Err_code),
-            {#function.write_hreg, error, [?ERR_CODE_WRITE_HREG, Err_code]};
+            decryption_error_code:decrypt(Err_code);
 
         % Ошибка записи Coil status 
         <<1:16, 0:16, 3:16, _Device_num:8, ?ERR_CODE_WRITE_COILS:8, Err_code:8>> ->
-            decryption_error_code:decrypt(Err_code),
-            {#function.write_coil, error, [?ERR_CODE_WRITE_COILS, Err_code]};
+            decryption_error_code:decrypt(Err_code);
 
         % Ошибка записи Holding regs 
         <<1:16, 0:16, 3:16, _Device_num:8, ?ERR_CODE_WRITE_HREGS:8, Err_code:8>> ->
-            decryption_error_code:decrypt(Err_code),
-            {#function.write_hregs, error, [?ERR_CODE_WRITE_HREGS, Err_code]};
+            decryption_error_code:decrypt(Err_code);
 
         % Неизвестное TCP сообщение
         Other -> 
-            error_logger:error_msg("Got unknown tcp message ~w~n.", [Other]),
-            {unknown}
+            error_logger:error_msg("Got unknown tcp message ~w~n.", [Other])
+
     end,
 
-    {noreply, S#state{register_info = ReturnMsg}};
+    {noreply, S};
 
 handle_info({tcp_closed, _Socket}, S) ->
     gen_tcp:close(S#state.socket),
@@ -357,18 +338,12 @@ list_to_bin16([H | T], Acc) ->
     list_to_bin16(T, <<Acc/binary, H:16>>).
 
 
-try_reconnect(S) ->
-    % Поодключение к Modbus TCP устройству
-    case {_, Socket} = gen_tcp:connect(S#state.ip_addr, S#state.port, ?SOCK_OPTS) of
-        {ok, _} ->
-            error_logger:info_msg("Connection fine...~n"),
-            S#state{socket = Socket, connection = connect};
+bin_to_list16(<<>>, Acc) ->
+    lists:reverse(Acc);
 
-        {error, _Reason} ->
-            error_logger:error_msg("Connection was broken"), 
-            try_reconnect(S, 1)
+bin_to_list16(<<H:16, T/binary>>, Acc) ->
+    bin_to_list16(T, [H | Acc]).
 
-    end.
 
 try_reconnect(S, _) ->
     % Поодключение к Modbus TCP устройству
@@ -381,3 +356,19 @@ try_reconnect(S, _) ->
             try_reconnect(S, 1)
 
     end.
+
+
+try_reconnect(S) ->
+    % Поодключение к Modbus TCP устройству
+    case {_, Socket} = gen_tcp:connect(S#state.ip_addr, S#state.port, ?SOCK_OPTS) of
+        {ok, _} ->
+            error_logger:info_msg("Connection fine...~n"),
+            S#state{socket = Socket, connection = connect};
+
+        {error, _Reason} ->
+            error_logger:error_msg("Connection established.~n"), 
+            try_reconnect(S, 1)
+
+    end.
+
+
