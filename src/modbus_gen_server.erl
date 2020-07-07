@@ -258,11 +258,11 @@ handle_info({tcp, _Socket, Msg}, S) ->
             gen_server:call(?STORAGE, {#read_iregs{device_num = Device_num}, LData});
 
         % Произошло успешное чтение Coil status 
-        <<1:16, 0:16, 4:16, Device_num:8, ?FUN_CODE_READ_COILS:8, 1:8, Data>> ->
+        <<1:16, 0:16, 3:16, Device_num:8, ?FUN_CODE_READ_COILS:8, Data>> ->
             gen_server:call(?STORAGE, {#read_coil{device_num = Device_num}, Data});
 
         % Произошло успешное чтение Input status
-        <<1:16, 0:16, 4:16, Device_num:8, ?FUN_CODE_READ_INPUTS:8, 1:8, Data>> ->
+        <<1:16, 0:16, 3:16, Device_num:8, ?FUN_CODE_READ_INPUTS:8, Data>> ->
             gen_server:call(?STORAGE, {#read_inputs{device_num = Device_num}, Data});
 
         % Произошла успешная запись Coil status
