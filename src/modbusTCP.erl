@@ -150,6 +150,31 @@ handle_cast({read, {holding_register, Dev_num, Reg_num}}, State) ->
 
     end;
 
+handle_cast({write, {holding_register, Dev_num, Reg_num, Values}}, State) ->
+    Socket = State#state.modbus_state#modbusTCP.socket,
+    if Socket =/= 0 ->
+        Reg_quantity = length(Values),
+        Len = Reg_quantity * 2,
+    
+        Packet_without_values = <<1:16, 0:16, 16#0B:16, Dev_num:8, ?FUN_CODE_WRITE_HREGS:8, Reg_num:16, Reg_quantity:16, Len:8>>,
+        PacketMsg = list_to_bin16(Values, Packet_without_values),
+        Mod = State#state.mod,
+
+        % Modbus код функции 03 (чтение Holding reg)
+        case gen_tcp:send(Socket, PacketMsg) of
+            ok ->
+                writing_holding_register(Socket, State, [Dev_num, Reg_num, Values]),
+                {noreply, State};
+
+            {error, _Reason} -> 
+                Mod:message([error, "can't send message"], State#state.state),
+                {noreply, State}
+
+        end;
+    true -> {noreply, State}
+
+    end;
+
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
@@ -177,6 +202,20 @@ reading_holding_register(Socket, State, [Dev_num, Reg_num]) ->
 
     end.
 
+writing_holding_register(Socket, State, [Dev_num, Reg_num, Values]) ->
+    Mod = State#state.mod,
+    Quantity = length(Values),
+
+    case gen_tcp:recv(Socket, 12, 3000) of
+        {ok, Data} -> 
+            <<1:16, 0:16, 6:16, Dev_num:8, ?FUN_CODE_WRITE_HREGS:8, _:16, Quantity:16>> = Data,
+            Mod:message([Dev_num, Reg_num, Values, Quantity], State#state.state);
+
+        {error, Reason} ->
+            Mod:message([error, Reason], State#state.state)
+
+    end.
+
 try_reconnect(State, [Ip_addr, Port]) ->
     % Поодключение к Modbus TCP устройству
     case {_, Socket} = gen_tcp:connect(Ip_addr, Port, ?SOCK_OPTS) of
@@ -188,4 +227,10 @@ try_reconnect(State, [Ip_addr, Port]) ->
             try_reconnect(State, [Ip_addr, Port])
 
     end.
+
+list_to_bin16([], Acc) ->
+    Acc;
+
+list_to_bin16([H | T], Acc) ->
+    list_to_bin16(T, <<Acc/binary, H:16>>).
 

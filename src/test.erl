@@ -11,7 +11,8 @@
     connect_to/1,
     disconnect_from/0,
     message/2,
-    read_hreg/2]).
+    read_hreg/2,
+    write_hreg/3]).
 
 start() ->
     modbusTCP:start_link({local, tcp}, ?MODULE, [], []).
@@ -28,6 +29,9 @@ disconnect_from() ->
 read_hreg(Dev_num, Reg_num) ->
     modbusTCP:read_register(tcp, {holding_register, Dev_num, Reg_num}).
 
+write_hreg(Dev_num, Reg_num, Values) ->
+    modbusTCP:write_register(tcp, {holding_register, Dev_num, Reg_num, Values}).
+
 init_modbus([]) ->
     {ok, 5, ["localhost", 502]}.
 
@@ -41,6 +45,9 @@ message(RegisterInfo, State) ->
     case RegisterInfo of
         [Dev_num, Reg_num, Reg_value] ->
             io:format("Device number is ~w, register number is ~w, register value is ~w.~n", [Dev_num, Reg_num, Reg_value]);
+
+        [Dev_num, Reg_num, Values, _Quantity] ->
+            io:format("Device number is ~w, register number is ~w, register values is ~w.~n", [Dev_num, Reg_num, Values]);
         
         [error, Reason] ->
             io:format("Error: ~w~n", [Reason])
