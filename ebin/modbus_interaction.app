@@ -2,9 +2,9 @@
              [{applications,[kernel,stdlib]},
               {modules,[decryption_error_code,modbus_gen_server,
                         modbus_interaction,modbus_interaction_app,
-                        modbus_interaction_sup]},
-              {vsn,"1.2.5"},
+                        modbus_interaction_sup,storage_server]},
+              {vsn,"1.2.6"},
               {mod,{modbus_interaction_app,[]}},
-              {registered,[modbus_gen]},
+              {registered,[modbus_gen,storage_server]},
               {description,["Application to interact with modbus TCP devices"]},
               {licenses,["Apache 2.0"]}]}.
