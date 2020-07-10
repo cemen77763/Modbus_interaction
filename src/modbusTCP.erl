@@ -17,7 +17,7 @@
 -callback terminate_modbus(Reason :: (normal | shutdown | {shutdown, term()} | term()), State :: term()) -> 
     term().
 
--optionalcallbacks([terminate_modbus/2]).
+-optional_callbacks([terminate_modbus/2]).
 
 
 -behaviour(gen_server).
@@ -118,6 +118,7 @@ handle_call(stop, _From, State) ->
 handle_call(_Request, _From, State) ->
     {reply, ok, State}.
 
+
 handle_cast({try_connect, [Ip_addr, Port]}, State) ->
     Mod = State#state.mod,
     NewState = try_reconnect(State, [Ip_addr, Port], 0),
@@ -181,13 +182,27 @@ handle_cast({read, {holding_register, Dev_num, Reg_num}}, State) ->
                 {noreply, State};
 
             {error, _Reason} -> 
-                Mod:message({error, cant_send}, State#state.state),
+                try 
+                    {ok, Mod:message({error, cant_send}, State#state.state)}
+
+                catch 
+                    throw:R -> {ok, R};
+                    Class:R:S -> {'EXIT', Class, R, S}
+            
+                end, 
                 {noreply, State}
 
         end;
 
     true -> 
-        Mod:message({error, socket_closed}, State#state.state),
+        try
+            Mod:message({error, socket_closed}, State#state.state)
+                
+        catch 
+            throw:R -> {ok, R};
+            Class:R:S -> {'EXIT', Class, R, S}
+    
+        end, 
         {noreply, State}
 
     end;
@@ -206,13 +221,27 @@ handle_cast({read, {holding_register, Dev_num, Reg_num, Quantity}}, State) ->
                 {noreply, State};
 
             {error, _Reason} -> 
-                Mod:message({error, cant_send}, State#state.state),
+                try
+                    Mod:message({error, cant_send}, State#state.state)
+                        
+                catch 
+                    throw:R -> {ok, R};
+                    Class:R:S -> {'EXIT', Class, R, S}
+            
+                end, 
                 {noreply, State}
 
         end;
 
     true -> 
-        Mod:message({error, socket_closed}, State#state.state),
+        try
+            Mod:message({error, socket_closed}, State#state.state)
+                
+        catch 
+            throw:R -> {ok, R};
+            Class:R:S -> {'EXIT', Class, R, S}
+    
+        end, 
         {noreply, State}
 
     end;
@@ -231,13 +260,27 @@ handle_cast({read, {input_register, Dev_num, Reg_num, Quantity}}, State) ->
                 {noreply, State};
 
             {error, _Reason} -> 
-                Mod:message({error, cant_send}, State#state.state),
+                try
+                    Mod:message({error, cant_send}, State#state.state)
+                        
+                catch 
+                    throw:R -> {ok, R};
+                    Class:R:S -> {'EXIT', Class, R, S}
+            
+                end, 
                 {noreply, State}
 
         end;
 
     true -> 
-        Mod:message({error, socket_closed}, State#state.state),
+        try 
+            Mod:message({error, socket_closed}, State#state.state)
+                
+        catch 
+            throw:R -> {ok, R};
+            Class:R:S -> {'EXIT', Class, R, S}
+    
+        end, 
         {noreply, State}
 
     end;
@@ -256,13 +299,27 @@ handle_cast({read, {coil_status, Dev_num, Reg_num}}, State) ->
                 {noreply, State};
 
             {error, _Reason} -> 
-                Mod:message({error, cant_send}, State#state.state),
+                try 
+                    Mod:message({error, cant_send}, State#state.state)
+                        
+                catch 
+                    throw:R -> {ok, R};
+                    Class:R:S -> {'EXIT', Class, R, S}
+            
+                end, 
                 {noreply, State}
 
         end;
 
     true -> 
-        Mod:message({error, socket_closed}, State#state.state),
+        try
+            Mod:message({error, socket_closed}, State#state.state)
+                
+        catch 
+            throw:R -> {ok, R};
+            Class:R:S -> {'EXIT', Class, R, S}
+    
+        end, 
         {noreply, State}
 
     end;
@@ -285,12 +342,26 @@ handle_cast({write, {holding_register, Dev_num, Reg_num, Values}}, State) ->
                 {noreply, State};
 
             {error, _Reason} -> 
-                Mod:message({error, cant_send}, State#state.state),
+                try
+                    Mod:message({error, cant_send}, State#state.state)
+                        
+                catch 
+                    throw:R -> {ok, R};
+                    Class:R:S -> {'EXIT', Class, R, S}
+            
+                end, 
                 {noreply, State}
 
         end;
     true -> 
-        Mod:message({error, socket_closed}, State#state.state),
+        try
+            Mod:message({error, socket_closed}, State#state.state)
+                
+        catch 
+            throw:R -> {ok, R};
+            Class:R:S -> {'EXIT', Class, R, S}
+    
+        end, 
         {noreply, State}
 
     end;
@@ -298,8 +369,10 @@ handle_cast({write, {holding_register, Dev_num, Reg_num, Values}}, State) ->
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
+
 handle_info(_Info, State) ->
     {noreply, State}.
+
 
 terminate(Reason, State) ->
     Mod = State#state.mod,
@@ -315,7 +388,9 @@ terminate(Reason, State) ->
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
+
 % -------------------------------------------------------------------------------
+
 
 init_it(Mod, Args) ->
     try
@@ -326,6 +401,7 @@ init_it(Mod, Args) ->
         Class:R:S -> {'EXIT', Class, R, S}
 
     end.
+
 
 try_terminate(Mod, Reason, State) ->
     case erlang:function_exported(Mod, terminate_modbus, 2) of
@@ -346,18 +422,34 @@ try_terminate(Mod, Reason, State) ->
         
     end.
 
+
 reading_holding_register(Socket, State, [Dev_num, Reg_num]) ->
     Mod = State#state.mod,
 
     case gen_tcp:recv(Socket, 0, 3000) of
         {ok, Data} -> 
             <<1:16, 0:16, 5:16, Dev_num:8, ?FUN_CODE_READ_HREGS:8, 2:8, Reg_value:16>> = Data,
-            Mod:message({holding_register, Dev_num, Reg_num, Reg_value}, State#state.state);
+            try 
+                Mod:message({holding_register, Dev_num, Reg_num, Reg_value}, State#state.state)
+                    
+            catch 
+                throw:R -> {ok, R};
+                Class:R:S -> {'EXIT', Class, R, S}
+        
+            end;
 
         {error, Reason} ->
-            Mod:message({error, Reason}, State#state.state)
+            try
+                Mod:message({error, Reason}, State#state.state)
+                    
+            catch 
+                throw:R -> {ok, R};
+                Class:R:S -> {'EXIT', Class, R, S}
+        
+            end
 
     end.
+
 
 reading_holding_registers(Socket, State, [Dev_num, Reg_num, _Quantity]) ->
     Mod = State#state.mod,
@@ -366,12 +458,27 @@ reading_holding_registers(Socket, State, [Dev_num, Reg_num, _Quantity]) ->
         {ok, Data} -> 
             <<1:16, 0:16, _:16, Dev_num:8, ?FUN_CODE_READ_HREGS:8, _:8, BinData/binary>> = Data,
             LData = bin_to_list16(BinData, []),
-            Mod:message({holding_register, Dev_num, Reg_num, LData}, State#state.state);
+            try
+                Mod:message({holding_register, Dev_num, Reg_num, LData}, State#state.state)
+                    
+            catch 
+                throw:R -> {ok, R};
+                Class:R:S -> {'EXIT', Class, R, S}
+        
+            end;
 
         {error, Reason} ->
-            Mod:message({error, Reason}, State#state.state)
+            try
+                Mod:message({error, Reason}, State#state.state)
+                    
+            catch 
+                throw:R -> {ok, R};
+                Class:R:S -> {'EXIT', Class, R, S}
+        
+            end
 
     end.
+
 
 reading_input_registers(Socket, State, [Dev_num, Reg_num, _Quantity]) ->
     Mod = State#state.mod,
@@ -380,25 +487,55 @@ reading_input_registers(Socket, State, [Dev_num, Reg_num, _Quantity]) ->
         {ok, Data} -> 
             <<1:16, 0:16, _:16, Dev_num:8, ?FUN_CODE_READ_IREGS:8, _:8, BinData/binary>> = Data,
             LData = bin_to_list16(BinData, []),
-            Mod:message({input_register, Dev_num, Reg_num, LData}, State#state.state);
+            try
+                Mod:message({input_register, Dev_num, Reg_num, LData}, State#state.state)
+                        
+            catch 
+                throw:R -> {ok, R};
+                Class:R:S -> {'EXIT', Class, R, S}
+        
+            end;
 
         {error, Reason} ->
-            Mod:message({error, Reason}, State#state.state)
+            try
+                Mod:message({error, Reason}, State#state.state)
+                    
+            catch 
+                throw:R -> {ok, R};
+                Class:R:S -> {'EXIT', Class, R, S}
+        
+            end
 
     end.
+
 
 reading_coil_status(Socket, State, [Dev_num, Reg_num]) ->
     Mod = State#state.mod,
 
     case gen_tcp:recv(Socket, 0, 3000) of
         {ok, Data} -> 
-            <<1:16, 0:16, 5:16, Dev_num:8, ?FUN_CODE_READ_COILS:8, Reg_value/binary>> = Data,
-            Mod:message({coils_status, Dev_num, Reg_num, Reg_value}, State#state.state);
+            <<1:16, 0:16, _:16, Dev_num:8, ?FUN_CODE_READ_COILS:8, Reg_value/binary>> = Data,
+            try
+                Mod:message({coils_status, Dev_num, Reg_num, Reg_value}, State#state.state)
+                        
+            catch 
+                throw:R -> {ok, R};
+                Class:R:S -> {'EXIT', Class, R, S}
+        
+            end;
 
         {error, Reason} ->
-            Mod:message({error, Reason}, State#state.state)
+            try
+                Mod:message({error, Reason}, State#state.state)
+                    
+            catch 
+                throw:R -> {ok, R};
+                Class:R:S -> {'EXIT', Class, R, S}
+        
+            end
 
     end.
+
 
 writing_holding_register(Socket, State, [Dev_num, Reg_num, Values]) ->
     Mod = State#state.mod,
@@ -407,12 +544,27 @@ writing_holding_register(Socket, State, [Dev_num, Reg_num, Values]) ->
     case gen_tcp:recv(Socket, 0, 3000) of
         {ok, Data} -> 
             <<1:16, 0:16, 6:16, Dev_num:8, ?FUN_CODE_WRITE_HREGS:8, _:16, Quantity:16>> = Data,
-            Mod:message({holding_register, Dev_num, Reg_num, Values, Quantity}, State#state.state);
+            try
+                Mod:message({holding_register, Dev_num, Reg_num, Values, Quantity}, State#state.state)
+                        
+            catch 
+                throw:R -> {ok, R};
+                Class:R:S -> {'EXIT', Class, R, S}
+        
+            end;
 
         {error, Reason} ->
-            Mod:message({error, Reason}, State#state.state)
+            try
+                Mod:message({error, Reason}, State#state.state)
+                    
+            catch 
+                throw:R -> {ok, R};
+                Class:R:S -> {'EXIT', Class, R, S}
+        
+            end
 
     end.
+
 
 try_reconnect(State, [Ip_addr, Port], Iter) when Iter =< 2 ->
     % Поодключение к Modbus TCP устройству
@@ -438,11 +590,13 @@ try_reconnect(State, [Ip_addr, Port], _Iter) ->
 
     end.
 
+
 list_to_bin16([], Acc) ->
     Acc;
 
 list_to_bin16([H | T], Acc) ->
     list_to_bin16(T, <<Acc/binary, H:16>>).
+
 
 bin_to_list16(<<>>, Acc) ->
     lists:reverse(Acc);

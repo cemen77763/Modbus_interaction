@@ -82,7 +82,7 @@ message(RegisterInfo, State) ->
         {input_register, Dev_num, Reg_num, LData} when is_list(LData) ->
             io:format("Device number is ~w, first register number is ~w, register values is ~w.~n", [Dev_num, Reg_num, LData]);
         
-        {coil_status, Dev_num, Reg_num, Data} ->
+        {coils_status, Dev_num, Reg_num, Data} ->
             io:format("Device number is ~w, first register number is ~w, register values is ~w.~n", [Dev_num, Reg_num, Data]);
 
         
