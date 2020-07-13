@@ -17,6 +17,10 @@
 -export([
     init/1,
     connect/2,
+    handle_call/3,
+    handle_continue/2,
+    handle_info/2,
+    handle_cast/2,
     disconnect/2,
     message/2,
     terminate/2]).
@@ -51,7 +55,7 @@ read_creg(Dev_num, Reg_num) ->
     gen_modbus:read_register(?SERVER, {coil_status, Dev_num, Reg_num}).
 
 init([]) ->
-    {ok, 5, ["localhost", 502]}.
+    {ok, 5}.
 
 connect(State, Info) ->
     case Info of
@@ -91,6 +95,18 @@ message(RegisterInfo, State) ->
 
     end,
     {noreply, State}.
+
+handle_call(_Request, _From, _State) ->
+    ok.
+
+handle_continue(_Info, _State) ->
+    ok.
+
+handle_info(_Info, _State) ->
+    ok.
+
+handle_cast(_Request, _State) ->
+    ok.
 
 terminate(_Reason, _State) ->
     io:format("terminating~n"),

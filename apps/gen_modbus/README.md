@@ -10,7 +10,7 @@ by adding `gen_modbus` to your list of dependencies in `mix.exs`:
 ```elixir
 def deps do
   [
-    {:gen_modbus, "~> 0.1.0"}
+    {:gen_modbus, "~> 1.2.7"}
   ]
 end
 ```

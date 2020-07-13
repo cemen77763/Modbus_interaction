@@ -1,14 +1,39 @@
 -module(gen_modbus).
 
+-type proplists() :: 
+    atom() | tuple().
+
 
 -callback init(Args :: term()) ->
-    {ok, State :: term(), NetInfo :: term()} |
-    {ok, State :: term(), NetInfo :: term(), timeout() |  hibernate} |
-    {stop, Reason :: term()} |
-    ignore.
+    {ok, State :: term()} | {ok, State :: term(), timeout() | hibernate | {continue, term()}} |
+    {stop, Reason :: term()} | ignore.
 
--callback connect(State :: term(), NetInfo :: ({connected, Ip_addr :: term(), Port :: integer()} |
-                 {error, Reason :: term()})) ->
+-callback handle_call(Request :: term(), From :: {pid(), Tag :: term()},
+                      State :: term()) ->
+    {reply, Reply :: term(), NewState :: term()} |
+    {reply, Reply :: term(), NewState :: term(), timeout() | hibernate | {continue, term()}} |
+    {noreply, NewState :: term()} |
+    {noreply, NewState :: term(), timeout() | hibernate | {continue, term()}} |
+    {stop, Reason :: term(), Reply :: term(), NewState :: term()} |
+    {stop, Reason :: term(), NewState :: term()}.
+
+-callback handle_cast(Request :: term(), State :: term()) ->
+    {noreply, NewState :: term()} |
+    {noreply, NewState :: term(), timeout() | hibernate | {continue, term()}} |
+    {stop, Reason :: term(), NewState :: term()}.
+
+-callback handle_info(Info :: timeout | term(), State :: term()) ->
+    {noreply, NewState :: term()} |
+    {noreply, NewState :: term(), timeout() | hibernate | {continue, term()}} |
+    {stop, Reason :: term(), NewState :: term()}.
+
+-callback handle_continue(Info :: term(), State :: term()) ->
+    {noreply, NewState :: term()} |
+    {noreply, NewState :: term(), timeout() | hibernate | {continue, term()}} |
+    {stop, Reason :: term(), NewState :: term()}.
+
+-callback connect(State :: term(), NetInfo :: proplists() |
+                 {error, Reason :: term()}) ->
     {ok, NewState :: term(), NetInfo :: term()} | 
     {stop, Reason :: term(), NewState :: term()}.
 
@@ -35,6 +60,8 @@
 -export([
     start_link/3,
     start_link/4,
+    cast/2,
+    call/2,
     try_connect/2,
     try_disconnect/1,
     stop/1,
@@ -46,7 +73,8 @@
     init/1,
     handle_call/3, 
     handle_cast/2, 
-    handle_info/2, 
+    handle_info/2,
+    handle_continue/2, 
     terminate/2, 
     code_change/3]).
 
@@ -78,12 +106,20 @@ start_link(Name, Mod, Args, Options) ->
     gen_server:start_link(Name, ?MODULE, [Mod, Args], Options).
 
 
+cast(Name, Message) ->
+    gen_server:cast(Name, Message).
+
+
+call(Name, Message) ->
+    gen_server:call(Name, Message).
+
+
 stop(Name) ->
     gen_server:stop(Name).
 
 
 try_connect(Name, NetInfo) ->
-    gen_server:cast(Name, {try_connect, NetInfo}).      
+    gen_server:call(Name, {try_connect, NetInfo}).      
 
 
 try_disconnect(Name) ->
@@ -100,10 +136,10 @@ write_register(Name, RegisterInfo) ->
 
 init([Mod, Args]) ->
     case init_it(Mod, Args) of
-        {ok, {ok, State, _NetInfo}} ->  
+        {ok, {ok, State}} ->  
             {ok, #state{mod = Mod, state = State}};
 
-        {ok, {ok, State, _NetInfo, Timeout}} ->    
+        {ok, {ok, State, Timeout}} ->    
             {ok, #state{mod = Mod, state = State}, Timeout};
 
         {ok, {stop, Reason}} ->
@@ -120,22 +156,32 @@ init([Mod, Args]) ->
     
     end.
 
+handle_continue(Info, State) ->
+    Mod = State#state.mod,
+    case try_continue(Mod, Info, State#state.state) of
+        {ok, {noreply, NewState}} ->
+            {noreply, State#state{state = NewState}};
+
+        {ok, {noreply, NewState, Timeout}} ->
+            {noreply, State#state{state = NewState}, Timeout};
+
+        {ok, {stop, Reason, NewState}} ->
+            {stop, Reason, State#state{state = NewState}}
+            
+    end.
+
 
 handle_call(stop, _From, State) ->
     {stop, normal, stopped, State};
 
 
-handle_call(_Request, _From, State) ->
-    {reply, ok, State}.
-
-
-handle_cast({try_connect, [Ip_addr, Port]}, State) ->
+handle_call({try_connect, [Ip_addr, Port]}, _From, State) ->
     Mod = State#state.mod,
-    case try_reconnect(State, [Ip_addr, Port], 0) of
+    case try_reconnect(State, [Ip_addr, Port]) of
         {error, Reason} ->
             case connect_it(Mod, {error, Reason}, State) of
-                {ok, {ok, NewState, _NetInfo}} ->
-                    {noreply, State#state{state = NewState}};
+                {ok, {ok, NewState, NetInfo}} ->
+                    {reply, NetInfo, State#state{state = NewState}};
 
                 {ok, {stop, Reason, NewState}} ->
                     {stop, Reason, State#state{state = NewState}};
@@ -146,8 +192,8 @@ handle_cast({try_connect, [Ip_addr, Port]}, State) ->
             end;
         NewState ->
             case connect_it(Mod, {connected, Ip_addr, Port}, NewState) of
-                {ok, {ok, NState, _NetInfo}} ->
-                    {noreply, NewState#state{state = NState}};
+                {ok, {ok, NState, NetInfo}} ->
+                    {reply, NetInfo, NewState#state{state = NState}};
                 
                 {ok, {stop, Reason, NState}} ->
                     {stop, Reason, NewState#state{state = NState}};
@@ -157,6 +203,29 @@ handle_cast({try_connect, [Ip_addr, Port]}, State) ->
             
             end
     end;
+
+handle_call(Request, From, State) ->
+    Mod = State#state.mod,
+    case try_call(Mod, Request, From, State#state.state) of
+        {ok, {reply, Reply, NewState}} ->
+            {reply, Reply, State#state{state = NewState}};
+
+        {ok, {reply, Reply, NewState, Timeout}} ->
+            {reply, Reply, State#state{state = NewState}, Timeout};
+
+        {ok, {noreply, NewState}} ->
+            {noreply, State#state{state = NewState}};
+
+        {ok, {noreply, NewState, Timeout}} ->
+            {noreply, State#state{state = NewState}, Timeout};
+
+        {ok, {stop, Reason, Reply, NewState}} ->
+            {stop, Reason, Reply, State#state{state = NewState}};
+
+        {ok, {stop, Reason, NewState}} ->
+            {stop, Reason, State#state{state = NewState}}
+            
+    end.
 
 
 handle_cast({try_disconnect}, State) ->
@@ -378,12 +447,34 @@ handle_cast({write, {holding_register, Dev_num, Reg_num, Values}}, State) ->
 
     end;
 
-handle_cast(_Msg, State) ->
-    {noreply, State}.
+handle_cast(Msg, State) ->
+    Mod = State#state.mod,
+    case try_cast(Mod, Msg, State#state.state) of
+        {ok, {noreply, NewState}} ->
+            {noreply, State#state{state = NewState}};
+
+        {ok, {noreply, NewState, Timeout}} ->
+            {noreply, State#state{state = NewState}, Timeout};
+
+        {ok, {stop, Reason, NewState}} ->
+            {stop, Reason, State#state{state = NewState}}
+            
+    end.
 
 
-handle_info(_Info, State) ->
-    {noreply, State}.
+handle_info(Info, State) ->
+    Mod = State#state.mod,
+    case try_info(Mod, Info, State#state.state) of
+        {ok, {noreply, NewState}} ->
+            {noreply, State#state{state = NewState}};
+
+        {ok, {noreply, NewState, Timeout}} ->
+            {noreply, State#state{state = NewState}, Timeout};
+
+        {ok, {stop, Reason, NewState}} ->
+            {stop, Reason, State#state{state = NewState}}
+            
+    end.
 
 
 terminate(Reason, State) ->
@@ -413,6 +504,47 @@ init_it(Mod, Args) ->
         Class:R:S -> {'EXIT', Class, R, S}
 
     end.
+
+try_continue(Mod, Info, State) ->
+    try
+        {ok, Mod:handle_continue(Info, State)}
+
+    catch 
+        throw:R -> {ok, R};
+        Class:R:S -> {'EXIT', Class, R, S}
+
+    end.
+
+try_call(Mod, Request, From, State) ->
+    try
+        {ok, Mod:handle_call(Request, From, State#state.state)}
+
+    catch 
+        throw:R -> {ok, R};
+        Class:R:S -> {'EXIT', Class, R, S}
+
+    end.
+
+try_cast(Mod, Msg, State) ->
+    try
+        {ok, Mod:handle_cast(Msg, State#state.state)}
+
+    catch 
+        throw:R -> {ok, R};
+        Class:R:S -> {'EXIT', Class, R, S}
+
+    end.
+
+try_info(Mod, Info, State) ->
+    try
+        {ok, Mod:handle_info(Info, State#state.state)}
+
+    catch 
+        throw:R -> {ok, R};
+        Class:R:S -> {'EXIT', Class, R, S}
+
+    end.
+
 
 connect_it(Mod, NetInfo, State) ->
     try
@@ -598,19 +730,7 @@ writing_holding_register(Socket, State, [Dev_num, Reg_num, Values]) ->
     end.
 
 
-try_reconnect(State, [Ip_addr, Port], Iter) when Iter =< 2 ->
-    % Поодключение к Modbus TCP устройству
-    case {_, Socket} = gen_tcp:connect(Ip_addr, Port, ?SOCK_OPTS) of
-        {ok, _} ->
-            State#state{modbus_state = #modbusTCP{socket = Socket, connection = connect,
-                                                ip_addr = Ip_addr, port = Port}};
-
-        {error, _Reason} ->
-            try_reconnect(State, [Ip_addr, Port], Iter + 1)
-
-    end;
-
-try_reconnect(State, [Ip_addr, Port], _Iter) ->
+try_reconnect(State, [Ip_addr, Port]) ->
     % Поодключение к Modbus TCP устройству
     case {_, Socket} = gen_tcp:connect(Ip_addr, Port, ?SOCK_OPTS) of
         {ok, _} ->
