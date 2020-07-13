@@ -1,21 +1,37 @@
-%%%-------------------------------------------------------------------%%%
-%%% @doc modbus_interaction top level supervisor                      %%%
-%%% @end                                                              %%%
-%%%-------------------------------------------------------------------%%%
+%%% ----------------------------------------------------------------------------------------- %%%
+%%% @doc This module implement interaction with devices according to the Modbus TCP protocol  %%%
+%%% @end                                                                                      %%%
+%%% ----------------------------------------------------------------------------------------- %%%
 
--module(modbus_interaction_sup).
+-module(modbus_tcp_app).
+
+-behaviour(application).
 
 -behaviour(supervisor).
 
--export([start_link/0]).
+%% application callbacks
+-export([
+    start/2,
+    stop/1]).
 
--export([init/1]).
+%% supervisor callbacks
+-export([
+    init/1]).
+ 
+-define(SERVER, gen_modbus).
 
--define(SERVER, ?MODULE).
+
+start(_StartType, _StartArgs) ->
+    start_link().
+
+
+stop(_State) ->
+    gen_modbus:stop(?SERVER),
+    ok.
 
 
 start_link() ->
-    supervisor:start_link({local, ?SERVER}, ?MODULE, []).
+    supervisor:start_link({local, ?MODULE}, ?MODULE, []).
 
 
 %% sup_flags() = #{strategy => strategy(),         % optional
@@ -36,18 +52,14 @@ init([]) ->
         period => 1000},
 
     ChildSpecs = [#{
-        id => modbus,
-        start => {modbus_gen_server, start_link, []},
-        restart => permanent,
-        shutdown => 1000,
-        type => worker,
-        modules => []},
-
-        #{id => modbus_storage,
-        start => {storage_server, start_link, []},
+        id => modbus_tcp,
+        start => {modbus_tcp, start, []},
         restart => permanent,
         shutdown => 1000,
         type => worker,
         modules => []}],
 
     {ok, {SupFlags, ChildSpecs}}.
+
+
+

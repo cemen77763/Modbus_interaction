@@ -22,7 +22,6 @@ start(_StartType, _StartArgs) ->
 
 stop(_State) ->
     gen_server:stop(?SERVER),
-    gen_server:stop(?STORAGE),
     ok.
 
 

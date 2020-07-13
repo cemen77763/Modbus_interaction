@@ -1,6 +1,6 @@
--module(test).
+-module(modbus_tcp).
 
--behaviour(modbusTCP).
+-behaviour(gen_modbus).
 
 -export([
     start/0,
@@ -13,44 +13,44 @@
     write_hreg/3,
     read_creg/2]).
 
-% modbusTCP callbacks
+% gen_modbus callbacks
 -export([
-    init_modbus/1,
+    init/1,
     connect/2,
-    disconnect/1,
+    disconnect/2,
     message/2,
-    terminate_modbus/2]).
+    terminate/2]).
 
--define(SERVER, mtcp).
+-define(SERVER, gen_modbus).
 
 start() ->
-    modbusTCP:start_link({local, ?SERVER}, ?MODULE, [], []).
+    gen_modbus:start_link({local, ?SERVER}, ?MODULE, [], []).
 
 stop() ->
-    modbusTCP:stop(?SERVER).
+    gen_modbus:stop(?SERVER).
 
 connect_to([Ip_addr, Port]) ->
-    modbusTCP:try_connect(?SERVER, [Ip_addr, Port]).
+    gen_modbus:try_connect(?SERVER, [Ip_addr, Port]).
 
 disconnect_from() ->
-    modbusTCP:try_disconnect(?SERVER).
+    gen_modbus:try_disconnect(?SERVER).
 
 read_hreg(Dev_num, Reg_num) ->
-    modbusTCP:read_register(?SERVER, {holding_register, Dev_num, Reg_num}).
+    gen_modbus:read_register(?SERVER, {holding_register, Dev_num, Reg_num}).
 
 write_hreg(Dev_num, Reg_num, Values) ->
-    modbusTCP:write_register(?SERVER, {holding_register, Dev_num, Reg_num, Values}).
+    gen_modbus:write_register(?SERVER, {holding_register, Dev_num, Reg_num, Values}).
 
 read_hregs(Dev_num, Reg_num, Quantity) ->
-    modbusTCP:read_register(?SERVER, {holding_register, Dev_num, Reg_num, Quantity}).
+    gen_modbus:read_register(?SERVER, {holding_register, Dev_num, Reg_num, Quantity}).
 
 read_iregs(Dev_num, Reg_num, Quantity) ->
-    modbusTCP:read_register(?SERVER, {input_register, Dev_num, Reg_num, Quantity}).
+    gen_modbus:read_register(?SERVER, {input_register, Dev_num, Reg_num, Quantity}).
 
 read_creg(Dev_num, Reg_num) ->
-    modbusTCP:read_register(?SERVER, {coil_status, Dev_num, Reg_num}).
+    gen_modbus:read_register(?SERVER, {coil_status, Dev_num, Reg_num}).
 
-init_modbus([]) ->
+init([]) ->
     {ok, 5, ["localhost", 502]}.
 
 connect(State, Info) ->
@@ -64,7 +64,7 @@ connect(State, Info) ->
     end,
     {ok, State, 0}.
 
-disconnect(State) ->
+disconnect(State, _Reason) ->
     io:format("Disconect was fine.~n"),
     {ok, State}.
 
@@ -92,6 +92,6 @@ message(RegisterInfo, State) ->
     end,
     {noreply, State}.
 
-terminate_modbus(_Reason, _State) ->
+terminate(_Reason, _State) ->
     io:format("terminating~n"),
     ok.

@@ -1,23 +1,32 @@
--module(modbusTCP).
+-module(gen_modbus).
 
 
--callback init_modbus(List :: list()) ->
-    {ok, State :: term(), NetInfo :: list()} | {ok, State :: term(), NetInfo :: term(), timeout()} |
-    {stop, Reason :: term()} | ignore.
+-callback init(Args :: term()) ->
+    {ok, State :: term(), NetInfo :: term()} |
+    {ok, State :: term(), NetInfo :: term(), timeout() |  hibernate} |
+    {stop, Reason :: term()} |
+    ignore.
 
--callback connect(State :: term(), Info :: ({connected, Ip_addr :: term(), Port :: integer()} | {error, Reason :: term()})) ->
-    {ok, NewState :: term(), Info :: term()} | {stop, Reason :: term(), NewState :: term()} | {error, Reason :: term()}.
+-callback connect(State :: term(), NetInfo :: ({connected, Ip_addr :: term(), Port :: integer()} |
+                 {error, Reason :: term()})) ->
+    {ok, NewState :: term(), NetInfo :: term()} | 
+    {stop, Reason :: term(), NewState :: term()}.
 
--callback disconnect(State :: term()) ->
-    {ok, NewState :: term()} | {stop, NewState :: term()}.
+-callback disconnect(State :: term(), Reason :: term()) ->
+    {ok, NewState :: term()} | 
+    {stop, Reason :: term(), NewState :: term()}.
 
--callback message(RegisterInfo :: list(), State :: term()) ->
-    {reply, Reply :: term(), NewState :: term()} | {noreply, NewState :: term()} | {stop, NewState :: term()}.
+-callback message(RegisterInfo :: list() | {error, Reason :: term()}, State :: term()) ->
+    {reply, Reply :: term(), NewState :: term()} | 
+    {noreply, NewState :: term()} | 
+    {stop, NewState :: term()}.
 
--callback terminate_modbus(Reason :: (normal | shutdown | {shutdown, term()} | term()), State :: term()) -> 
+
+
+-callback terminate(Reason :: (normal | shutdown | {shutdown, term()} | term()), State :: term()) -> 
     term().
 
--optional_callbacks([terminate_modbus/2]).
+-optional_callbacks([terminate/2]).
 
 
 -behaviour(gen_server).
@@ -115,37 +124,40 @@ init([Mod, Args]) ->
 handle_call(stop, _From, State) ->
     {stop, normal, stopped, State};
 
+
 handle_call(_Request, _From, State) ->
     {reply, ok, State}.
 
 
 handle_cast({try_connect, [Ip_addr, Port]}, State) ->
     Mod = State#state.mod,
-    NewState = try_reconnect(State, [Ip_addr, Port], 0),
-    case NewState of
+    case try_reconnect(State, [Ip_addr, Port], 0) of
         {error, Reason} ->
-            try
-            {ok, Mod:connect(State#state.state, {error, Reason})}
+            case connect_it(Mod, {error, Reason}, State) of
+                {ok, {ok, NewState, _NetInfo}} ->
+                    {noreply, State#state{state = NewState}};
 
-            catch 
-                throw:R -> {ok, R};
-                Class:R:S -> {'EXIT', Class, R, S}
+                {ok, {stop, Reason, NewState}} ->
+                    {stop, Reason, State#state{state = NewState}};
 
-            end,
-            {noreply, State};
-        
-        _Other -> 
-            {ok, {ok, ModbusState, _NetInfo}} = 
-            try
-                {ok, Mod:connect(State#state.state, {connected, Ip_addr, Port})}
-        
-            catch 
-                throw:R -> {ok, R};
-                Class:R:S -> {'EXIT', Class, R, S}
-        
-            end,
-            {noreply, NewState#state{state = ModbusState}}
+                {'EXIT', Class, Reason, Stacktrace} ->
+                    erlang:raise(Class, Reason, Stacktrace)
+
+            end;
+        NewState ->
+            case connect_it(Mod, {connected, Ip_addr, Port}, NewState) of
+                {ok, {ok, NState, _NetInfo}} ->
+                    {noreply, NewState#state{state = NState}};
+                
+                {ok, {stop, Reason, NState}} ->
+                    {stop, Reason, NewState#state{state = NState}};
+
+                {'EXIT', Class, Reason, Stacktrace} ->
+                    erlang:raise(Class, Reason, Stacktrace)
+            
+            end
     end;
+
 
 handle_cast({try_disconnect}, State) ->
     Mod = State#state.mod,
@@ -156,17 +168,17 @@ handle_cast({try_disconnect}, State) ->
             ok
     end,
 
-    {ok, {ok, NewState}} = 
-    try
-        {ok, Mod:disconnect(State#state.state)}
+    case disconnect_it(Mod, State) of
+        {ok, {ok, NState}} ->
+            {noreply, State#state{state = NState, modbus_state = #modbusTCP{socket = 0, connection = close}}};
+                
+        {ok, {stop, Reason, NState}} ->
+            {stop, Reason, State#state{state = NState, modbus_state = #modbusTCP{socket = 0, connection = close}}};
 
-    catch 
-        throw:R -> {ok, R};
-        Class:R:S -> {'EXIT', Class, R, S}
+        {'EXIT', Class, Reason, Stacktrace} ->
+            erlang:raise(Class, Reason, Stacktrace)
 
-    end, 
-    
-    {noreply, State#state{state = NewState, modbus_state = #modbusTCP{socket = 0, connection = close}}};
+    end;
 
 handle_cast({read, {holding_register, Dev_num, Reg_num}}, State) ->
     Packet = <<1:16, 0:16, 6:16, Dev_num:8, ?FUN_CODE_READ_HREGS:8, Reg_num:16, 1:16>>,
@@ -394,7 +406,27 @@ code_change(_OldVsn, State, _Extra) ->
 
 init_it(Mod, Args) ->
     try
-        {ok, Mod:init_modbus(Args)}
+        {ok, Mod:init(Args)}
+
+    catch 
+        throw:R -> {ok, R};
+        Class:R:S -> {'EXIT', Class, R, S}
+
+    end.
+
+connect_it(Mod, NetInfo, State) ->
+    try
+        {ok, Mod:connect(State#state.state, NetInfo)}
+
+    catch 
+        throw:R -> {ok, R};
+        Class:R:S -> {'EXIT', Class, R, S}
+
+    end.
+
+disconnect_it(Mod, State) ->
+    try
+        {ok, Mod:disconnect(State#state.state, your_own)}
 
     catch 
         throw:R -> {ok, R};
@@ -404,10 +436,10 @@ init_it(Mod, Args) ->
 
 
 try_terminate(Mod, Reason, State) ->
-    case erlang:function_exported(Mod, terminate_modbus, 2) of
+    case erlang:function_exported(Mod, terminate, 2) of
 	true ->
 	    try
-		    {ok, Mod:terminate_modbus(Reason, State)}
+		    {ok, Mod:terminate(Reason, State)}
 	    
         catch
 		    throw:R ->
