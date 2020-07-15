@@ -1,11 +1,12 @@
-modbus_interaction
+ecss_modbus
 =====
 
 An OTP library for Modbus TCP interaction with devices
 
 Build
 -----
-
-    $ rebar3 compile
-    or
     $ mix compile
+
+Run
+-----
+    $ iex -S mix
