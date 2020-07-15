@@ -1,45 +1,68 @@
 
--record(read_hreg, {
-    device_num,
-    register_num}).
+%%% ------------------------- COMMANDS RECORDS -------------------------
+-record(connect, {
+    ip_addr :: tuple(),
+    port :: integer()
+    }).
 
--record(read_hregs, {
-    device_num,
-    register_num,
-    quantity}).
+-record(disconnect, {
+    reason :: term()
+    }).
 
--record(write_hreg, {
-    device_num,
-    register_num,
-    value}).
+-record(change_sock_opts, {
+    active :: boolean(),
+    reuseaddr :: boolean(),
+    nodelay :: boolean(),
+    ifaddr :: inet | local | inet6
+    }).
 
--record(write_hregs, {
-    device_num,
-    register_num,
-    values}).
+-record(read_holding_registers, {
+    device_number :: integer(),
+    register_number :: integer(),
+    quantity :: integer(),
+    registers_value :: list()
+    }).
 
--record(read_ireg, {
-    device_num,
-    register_num}).
+-record(read_input_registers, {
+    device_number :: integer(),
+    register_number :: integer(),
+    quantity :: integer(),
+    registers_value :: list() 
+    }).
 
--record(read_iregs, {
-    device_num,
-    register_num,
-    quantity}).
+-record(read_coils_status, {
+    device_number :: integer(),
+    register_number :: integer(),
+    quantity :: integer(),
+    registers_value :: binary()
+    }).
 
--record(write_coil, {
-    device_num,
-    register_num,
-    value}).
+-record(read_inputs_status, {
+    device_number :: integer(),
+    register_number :: integer(),
+    quantity :: integer(),
+    registers_value :: binary()
+    }).
 
--record(read_coil, {
-    device_num,
-    register_num}).
+-record(write_holding_register, {
+    device_number :: integer(),
+    register_number :: integer(),
+    register_value :: number()
+    }).
 
--record(read_inputs, {
-    device_num,
-    register_num}).
+-record(write_holding_registers, {
+    device_number :: integer(),
+    register_number :: integer(),
+    registers_value :: list()
+    }).
 
+-record(write_coil_status, {
+    device_number :: integer(),
+    register_number :: integer(),
+    register_value :: 0 | 1
+    }).
+
+%%% ------------------------- COMMANDS RECORDS -------------------------
 -define(FUN_CODE_READ_COILS,    16#01).
 -define(FUN_CODE_READ_INPUTS,   16#02).
 -define(FUN_CODE_READ_HREGS,    16#03).

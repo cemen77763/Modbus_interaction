@@ -2,16 +2,14 @@
 
 -behaviour(gen_modbus).
 
+-include("../../gen_modbus/include/gen_modbus.hrl").
+
 -export([
     start/0,
     stop/0,
     connect_to/1,
-    disconnect_from/0,
-    read_hreg/2,
-    read_iregs/3,
-    read_hregs/3,
-    write_hreg/3,
-    read_creg/2]).
+    disconnect_from/0
+    ]).
 
 % gen_modbus callbacks
 -export([
@@ -38,44 +36,6 @@ connect_to([Ip_addr, Port]) ->
 
 disconnect_from() ->
     gen_modbus:try_disconnect(?SERVER).
-
-read_hreg(Dev_num, Reg_num) ->
-    gen_modbus:read_register(?SERVER, {holding_register, Dev_num, Reg_num}).
-
-write_hreg(Dev_num, Reg_num, Values) ->
-    gen_modbus:write_register(?SERVER, {holding_register, Dev_num, Reg_num, Values}).
-
-read_hregs(Dev_num, Reg_num, Quantity) ->
-    gen_modbus:read_register(?SERVER, {holding_register, Dev_num, Reg_num, Quantity}).
-
-read_iregs(Dev_num, Reg_num, Quantity) ->
-    gen_modbus:read_register(?SERVER, {input_register, Dev_num, Reg_num, Quantity}).
-
-read_creg(Dev_num, Reg_num) ->
-    gen_modbus:read_register(?SERVER, {coil_status, Dev_num, Reg_num}).
-
-
--record(connect, {
-    ip_addr :: tuple(),
-    port :: integer()}).
-
--record(change_sock_opts, {
-    active :: boolean(),
-    reuseaddr :: boolean(),
-    nodelay :: boolean(),
-    ifaddr :: inet | local | inet6
-}).
-
--record(disconnect, {
-    reason :: atom() | term()
-}).
-
--record(read_holding_registers, {
-    device_number :: integer(),
-    register_number :: integer(),
-    quantity :: integer(),
-    registers_value :: list()
-}).
 
 init([]) ->
     ChangeSopts = #change_sock_opts{active = false, reuseaddr = true, nodelay = true, ifaddr = inet},
