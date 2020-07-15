@@ -54,60 +54,72 @@ read_iregs(Dev_num, Reg_num, Quantity) ->
 read_creg(Dev_num, Reg_num) ->
     gen_modbus:read_register(?SERVER, {coil_status, Dev_num, Reg_num}).
 
+
+-record(connect, {
+    ip_addr :: tuple(),
+    port :: integer()}).
+
+-record(change_sock_opts, {
+    active :: boolean(),
+    reuseaddr :: boolean(),
+    nodelay :: boolean(),
+    ifaddr :: inet | local | inet6
+}).
+
+-record(disconnect, {
+    reason :: atom() | term()
+}).
+
+-record(read_holding_registers, {
+    device_number :: integer(),
+    register_number :: integer(),
+    quantity :: integer(),
+    registers_value :: list()
+}).
+
 init([]) ->
-    {ok, 5}.
+    ChangeSopts = #change_sock_opts{active = false, reuseaddr = true, nodelay = true, ifaddr = inet},
+    Connect = #connect{ip_addr = "localhost", port = 502},
+    Disconnect = #disconnect{reason = normal},
+    {ok, [ChangeSopts, Connect, Disconnect], 5, {continue, read_hreg}}.
 
 connect(State, Info) ->
     case Info of
-        {error, Reason} ->
-            io:format("Error: ~w~n", [Reason]);
         {connected, Ip_addr, Port} ->
             io:format("connected to ~w ~w~n", [Ip_addr, Port]);
         Info ->
             io:format("connected fine~n")
     end,
-    {ok, State, 0}.
+    {ok, [], State}.
 
-disconnect(State, _Reason) ->
-    io:format("Disconect was fine.~n"),
-    {ok, State}.
+disconnect(Reason, State) ->
+    io:format("Disconected because ~w.~n", [Reason]),
+    {ok, [], State}.
 
-message(RegisterInfo, State) ->
-    case RegisterInfo of
-        {holding_register, Dev_num, Reg_num, LData} when is_list(LData) ->
-            io:format("Device number is ~w, first register number is ~w, register values is ~w.~n", [Dev_num, Reg_num, LData]);
+message(#read_holding_registers{
+    device_number = Dev_num,
+    register_number = Reg_num,
+    registers_value = LData
+    }, State) ->
+    io:format("Reading holding registers~ndevice: ~w~nfirst register:~w~ndata: ~w~n", [Dev_num, Reg_num, LData]),
+    {noreply, [], State}.
 
-        {holding_register, Dev_num, Reg_num, Reg_value} ->
-            io:format("Device number is ~w, register number is ~w, register value is ~w.~n", [Dev_num, Reg_num, Reg_value]);
+handle_call(Request, _From, State) ->
+    {reply, Request, [], State}.
 
-        {holding_register, Dev_num, Reg_num, Values, _Quantity} ->
-            io:format("Device number is ~w, register number is ~w, register values is ~w.~n", [Dev_num, Reg_num, Values]);
+handle_continue(read_hreg, State) ->
+    ReadHreg = #read_holding_registers{
+        device_number = 1,
+        register_number = 2,
+        quantity = 3},
+    {noreply, [ReadHreg], State}.
 
-        {input_register, Dev_num, Reg_num, LData} when is_list(LData) ->
-            io:format("Device number is ~w, first register number is ~w, register values is ~w.~n", [Dev_num, Reg_num, LData]);
-        
-        {coils_status, Dev_num, Reg_num, Data} ->
-            io:format("Device number is ~w, first register number is ~w, register values is ~w.~n", [Dev_num, Reg_num, Data]);
+handle_info(_Info, State) ->
+    {noreply, [], State, 5}.
 
-        
-        {error, Reason} ->
-            io:format("Error: ~w~n", [Reason])
+handle_cast(_Request, State) ->
+    {noreply, [], State}.
 
-    end,
-    {noreply, State}.
-
-handle_call(_Request, _From, _State) ->
-    ok.
-
-handle_continue(_Info, _State) ->
-    ok.
-
-handle_info(_Info, _State) ->
-    ok.
-
-handle_cast(_Request, _State) ->
-    ok.
-
-terminate(_Reason, _State) ->
-    io:format("terminating~n"),
+terminate(Reason, State) ->
+    io:format("Terminating reaason: ~w, state: ~w~n", [Reason, State]),
     ok.
