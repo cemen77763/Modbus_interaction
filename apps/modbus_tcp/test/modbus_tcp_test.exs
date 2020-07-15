@@ -1,8 +1,7 @@
 defmodule ModbusTcpTest do
   use ExUnit.Case
-  doctest ModbusTcp
 
-  test "greets the world" do
-    assert ModbusTcp.hello() == :world
+  test "stop gen_modbus" do
+    assert :modbus_tcp.stop() == :ok
   end
 end

@@ -2,8 +2,7 @@
 
 -type cmd() :: record:records().
 
--type netinfo() :: proplists:proplists().
-
+-type netinfo() :: [gen_tcp:connect_option()].
 
 -callback init(Args :: term()) ->
     {ok, Command :: cmd(), State :: term()} | {ok, Command :: cmd(), State :: term(), timeout() | hibernate | {continue, term()}} |
@@ -40,9 +39,9 @@
     {ok, Command :: cmd(), NewState :: term()} | 
     {stop, Reason :: term(), Command :: cmd(), NewState :: term()}.
 
--callback message(RegisterInfo :: proplists:proplists(), State :: term()) ->
+-callback message(RegisterInfo :: record:record(), State :: term()) ->
     {ok, Command :: cmd(), NewState :: term()} | 
-    {stop, Command :: cmd(), NewState :: term()}.
+    {stop, Reason :: term(), Command :: cmd(), NewState :: term()}.
 
 -callback terminate(Reason :: (normal | shutdown | {shutdown, term()} | term()), State :: term()) -> 
     term().
@@ -52,7 +51,6 @@
     handle_info/2,
     handle_continue/2
     ]).
-
 
 -behaviour(gen_server).
 
@@ -189,8 +187,7 @@ handle_call(Request, From, State) ->
             {stop, Reason, cmd(Command, State#state{state = NewState})};
 
         {'EXIT', Class, Reason, Stacktrace} ->
-            erlang:raise(Class, Reason, Stacktrace)
-            
+            erlang:raise(Class, Reason, Stacktrace)           
     end.
 
 handle_cast(Msg, State) ->
@@ -256,10 +253,8 @@ handle_info(Info, State) ->
             {stop, Reason, cmd(Command, State#state{state = NewState})};
 
         {'EXIT', Class, Reason, Stacktrace} ->
-            erlang:raise(Class, Reason, Stacktrace)
-            
+            erlang:raise(Class, Reason, Stacktrace)          
     end.
-
 
 terminate(Reason, State) ->
     Mod = State#state.mod,
@@ -333,7 +328,6 @@ cmd([#connect{
                     gen_server:stop(self(), Reason, infinity);
                 {'EXIT', Class, Reason, Stacktrace} ->
                     erlang:raise(Class, Reason, Stacktrace)
-
             end
     end;
 
@@ -343,68 +337,15 @@ cmd([#change_sock_opts{
     nodelay = Nodelay, 
     ifaddr = Ifaddr
     } | T], S) ->
-    Mod = S#state.mod,
-    Socket = S#state.socket_info#socket_info.socket,
-    Ip_addr = S#state.socket_info#socket_info.ip_addr,
-    Port = S#state.socket_info#socket_info.port,
-    if Socket =/= 0 ->
-        gen_tcp:close(Socket);
-        true ->
-            ok
-    end,
     S1 = S#state{socket_opts = [
-                Ifaddr,
-                binary,
-                {packet, raw},
-                {active, Active},
-                {reuseaddr, Reuseaddr},
-                {nodelay, Nodelay}
-                ]},
-    case {_, Sock} = gen_tcp:connect(Ip_addr, Port, S#state.socket_opts) of
-        {ok, _} ->
-            S2 = S1#state{socket_info = #socket_info{
-                                            socket = Sock,
-                                            ip_addr = Ip_addr,
-                                            port = Port,
-                                            connection = connect}},
-            Res =             
-            try
-                {ok, Mod:connect(S2#state.state, S2#state.socket_info)}
-            catch 
-                throw:R -> {ok, R};
-                C:R:S -> {'EXIT', C, R, S}
-            end,
-            case Res of
-                {ok, {ok, Command, NewState}} ->
-                    cmd(Command ++ T, S2#state{state = NewState});              
-                {ok, {stop, Reason, Command, NewState}} ->
-                    cmd(Command ++ T, S2#state{state = NewState}),
-                    gen_server:stop(self(), Reason, infinity);
-                {'EXIT', Class, Reason, Stacktrace} ->
-                    erlang:raise(Class, Reason, Stacktrace)
-            end;
-        {error, Reason} ->
-            S2 = S1#state{socket_info = #socket_info{
-                                            socket = 0,
-                                            connection = close}},
-            Res = 
-            try
-                {ok, Mod:disconnect(Reason, S2#state.state)}
-            catch 
-                throw:R -> {ok, R};
-                C:R:S -> {'EXIT', C, R, S}
-            end,
-            case Res of
-                {ok, {ok, Command, NewState}} ->
-                    cmd(Command ++ T, S2#state{state = NewState});             
-                {ok, {stop, Reason, Command, NewState}} ->
-                    cmd(Command ++ T, S2#state{state = NewState}),
-                    gen_server:stop(self(), Reason, infinity);
-                {'EXIT', Class, Reason, Stacktrace} ->
-                    erlang:raise(Class, Reason, Stacktrace)
-
-            end
-    end;
+        Ifaddr,
+        binary,
+        {packet, raw},
+        {active, Active},
+        {reuseaddr, Reuseaddr},
+        {nodelay, Nodelay}
+        ]},
+    cmd(T, S1);
 
 cmd([#disconnect{reason = Reason} | T], S) ->
     Mod = S#state.mod,

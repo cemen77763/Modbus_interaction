@@ -39,9 +39,8 @@ disconnect_from() ->
 
 init([]) ->
     ChangeSopts = #change_sock_opts{active = false, reuseaddr = true, nodelay = true, ifaddr = inet},
-    Connect = #connect{ip_addr = "localhost", port = 502},
-    Disconnect = #disconnect{reason = normal},
-    {ok, [ChangeSopts, Connect, Disconnect], 5, {continue, read_hreg}}.
+    Connect = #connect{ip_addr = "localhost", port = 5000},
+    {ok, [ChangeSopts, Connect], 5, {continue, read_hreg}}.
 
 connect(State, Info) ->
     case Info of
@@ -54,7 +53,8 @@ connect(State, Info) ->
 
 disconnect(Reason, State) ->
     io:format("Disconected because ~w.~n", [Reason]),
-    {ok, [], State}.
+    Connect = #connect{ip_addr = "localhost", port = 5000},
+    {ok, [Connect], State}.
 
 message(#read_holding_registers{
     device_number = Dev_num,
@@ -62,7 +62,10 @@ message(#read_holding_registers{
     registers_value = LData
     }, State) ->
     io:format("Reading holding registers~ndevice: ~w~nfirst register:~w~ndata: ~w~n", [Dev_num, Reg_num, LData]),
-    {noreply, [], State}.
+    {ok, [], State};
+
+message(_RegInfo, State) ->
+    {ok, [], State}.
 
 handle_call(Request, _From, State) ->
     {reply, Request, [], State}.
@@ -72,7 +75,12 @@ handle_continue(read_hreg, State) ->
         device_number = 1,
         register_number = 2,
         quantity = 3},
-    {noreply, [ReadHreg], State}.
+    ReadIreg = #read_input_registers{
+        device_number = 1,
+        register_number = 2,
+        quantity = 3},
+    _Disconnect = #disconnect{reason = normal},
+    {noreply, [ReadHreg, ReadIreg], State}.
 
 handle_info(_Info, State) ->
     {noreply, [], State, 5}.
