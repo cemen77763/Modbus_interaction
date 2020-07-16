@@ -2,13 +2,13 @@ defmodule EcssModbus.MixProject do
     use Mix.Project
 
     def project do
-      [
+        [
         apps_path: "apps",
-        version: "0.1.1",
+        version: "1.0.0",
         start_permanent: Mix.env() == :prod,
         language: :erlang,
         deps: deps()
-      ]
+        ]
     end
 
     # Dependencies listed here are available only for this
@@ -17,6 +17,6 @@ defmodule EcssModbus.MixProject do
     #
     # Run "mix help deps" for examples and options.
     defp deps do
-      []
+        []
     end
 end

@@ -1,8 +1,7 @@
-%%% ----------------------------------------------------------------------------------------- %%%
-%%% @doc This module implement interaction with devices according to the Modbus TCP protocol  %%%
-%%% @end                                                                                      %%%
-%%% ----------------------------------------------------------------------------------------- %%%
-
+%%% ----------------------------------------------------------------------------------------- 
+%%% @doc Modbus TCP application and supervisor  
+%%% @end                                                                                      
+%%% ----------------------------------------------------------------------------------------- 
 -module(modbus_tcp_app).
 
 -behaviour(application).
@@ -20,15 +19,12 @@
  
 -define(SERVER, gen_modbus).
 
-
 start(_StartType, _StartArgs) ->
     start_link().
-
 
 stop(_State) ->
     gen_modbus:stop(?SERVER),
     ok.
-
 
 start_link() ->
     supervisor:start_link({local, ?MODULE}, ?MODULE, []).
@@ -44,11 +40,10 @@ start_link() ->
 %%                  type => worker(),       % optional
 %%                  modules => modules()}   % optional
 
-
 init([]) ->
     SupFlags = #{
         strategy => one_for_all,
-        intensity => 3,
+        intensity => 2,
         period => 1000},
 
     ChildSpecs = [#{

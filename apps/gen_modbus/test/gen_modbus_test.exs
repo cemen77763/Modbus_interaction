@@ -4,4 +4,4 @@ defmodule GenModbusTest do
   test "stop gen_modbus" do
     assert :gen_modbus.stop(:gen_modbus) == :ok
   end
-end
+end 

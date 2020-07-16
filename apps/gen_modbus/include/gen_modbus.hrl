@@ -1,5 +1,12 @@
 
 %%% ------------------------- COMMANDS RECORDS -------------------------
+-record(socket_info, {
+    socket = 0,
+    connection = close,
+    ip_addr = "localhost",
+    port = 502
+    }).
+
 -record(connect, {
     ip_addr :: tuple(),
     port :: integer()
@@ -13,7 +20,7 @@
     active :: boolean(),
     reuseaddr :: boolean(),
     nodelay :: boolean(),
-    ifaddr :: inet | local | inet6
+    ifaddr :: inet | inet6
     }).
 
 -record(read_holding_registers, {
@@ -60,6 +67,13 @@
     device_number :: integer(),
     register_number :: integer(),
     register_value :: 0 | 1
+    }).
+
+-record(write_coils_status, {
+    device_number :: integer(),
+    register_number :: integer(),
+    quantity :: integer(),
+    registers_value :: binary()
     }).
 
 %%% ------------------------- COMMANDS RECORDS -------------------------

@@ -3,23 +3,25 @@ defmodule GenModbus.MixProject do
 
     def project do
         [
-          app: :gen_modbus,
-          version: "1.2.8",
-          build_path: "../../_build",
-          config_path: "../../config/config.exs",
-          deps_path: "../../deps",
-          lockfile: "../../mix.lock",
-          language: :erlang,
-          start_permanent: Mix.env() == :prod,
-          deps: deps()]
+        app: :gen_modbus,
+        version: "1.2.8",
+        build_path: "../../_build",
+        config_path: "../../config/config.exs",
+        deps_path: "../../deps",
+        lockfile: "../../mix.lock",
+        language: :erlang,
+        start_permanent: Mix.env() == :prod,
+        deps: deps()
+        ]
     end
 
     # Run "mix help compile.app" to learn about applications.
     def application do
         [
-          registered: [:gen_modbus],
-          description: ['Application to interact with modbus TCP devices'],
-          licenses: ['Apache 2.0']]
+        registered: [:gen_modbus],
+        description: ['Application to interact with modbus TCP devices'],
+        licenses: ['Apache 2.0']
+        ]
     end
 
     # Run "mix help deps" to learn about dependencies.

@@ -1,14 +1,16 @@
+%%% ----------------------------------------------------------------------------------------- 
+%%% @doc Interaction with modbus TCP devices using gen_modbus behaviour 
+%%% @end                                                                                      
+%%% ----------------------------------------------------------------------------------------- 
 -module(modbus_tcp).
 
 -behaviour(gen_modbus).
 
--include("../../gen_modbus/include/gen_modbus.hrl").
+-include_lib("../../gen_modbus/include/gen_modbus.hrl").
 
 -export([
     start/0,
-    stop/0,
-    connect_to/1,
-    disconnect_from/0
+    stop/0
     ]).
 
 % gen_modbus callbacks
@@ -21,7 +23,8 @@
     handle_cast/2,
     disconnect/2,
     message/2,
-    terminate/2]).
+    terminate/2
+    ]).
 
 -define(SERVER, gen_modbus).
 
@@ -31,38 +34,35 @@ start() ->
 stop() ->
     gen_modbus:stop(?SERVER).
 
-connect_to([Ip_addr, Port]) ->
-    gen_modbus:try_connect(?SERVER, [Ip_addr, Port]).
-
-disconnect_from() ->
-    gen_modbus:try_disconnect(?SERVER).
-
 init([]) ->
     ChangeSopts = #change_sock_opts{active = false, reuseaddr = true, nodelay = true, ifaddr = inet},
     Connect = #connect{ip_addr = "localhost", port = 5000},
-    {ok, [ChangeSopts, Connect], 5, {continue, read_hreg}}.
+    {ok, [ChangeSopts, Connect], 5, {continue, read}}.
 
-connect(State, Info) ->
-    case Info of
-        {connected, Ip_addr, Port} ->
-            io:format("connected to ~w ~w~n", [Ip_addr, Port]);
-        Info ->
-            io:format("connected fine~n")
-    end,
+connect(State, #socket_info{ip_addr = Ip_addr, port = Port}) ->
+    io:format("Connection fine Ip addr: ~w Port ~w~n", [Ip_addr, Port]),
     {ok, [], State}.
 
 disconnect(Reason, State) ->
     io:format("Disconected because ~w.~n", [Reason]),
-    Connect = #connect{ip_addr = "localhost", port = 5000},
-    {ok, [Connect], State}.
+    _Connect = #connect{ip_addr = "localhost", port = 5000},
+    {ok, [], State}.
 
 message(#read_holding_registers{
     device_number = Dev_num,
     register_number = Reg_num,
     registers_value = LData
     }, State) ->
-    io:format("Reading holding registers~ndevice: ~w~nfirst register:~w~ndata: ~w~n", [Dev_num, Reg_num, LData]),
+    io:format("~nReading holding registers~ndevice: ~w~nfirst register:~w~ndata: ~w~n~n", [Dev_num, Reg_num, LData]),
     {ok, [], State};
+
+message(#read_input_registers{
+    device_number = Dev_num,
+    register_number = Reg_num,
+    registers_value = LData
+    }, State) ->
+    io:format("~nReading holding registers~ndevice: ~w~nfirst register:~w~ndata: ~w~n~n", [Dev_num, Reg_num, LData]),
+    {ok, [], State};    
 
 message(_RegInfo, State) ->
     {ok, [], State}.
@@ -70,24 +70,54 @@ message(_RegInfo, State) ->
 handle_call(Request, _From, State) ->
     {reply, Request, [], State}.
 
-handle_continue(read_hreg, State) ->
+handle_continue(read, State) ->
     ReadHreg = #read_holding_registers{
         device_number = 1,
-        register_number = 2,
-        quantity = 3},
+        register_number = 1,
+        quantity = 4},
     ReadIreg = #read_input_registers{
+        device_number = 1,
+        register_number = 1,
+        quantity = 2},
+    ReadCoil = #read_coils_status{
+        device_number = 1,
+        register_number = 1,
+        quantity = 1},
+    ReadInput = #read_inputs_status{
         device_number = 1,
         register_number = 2,
         quantity = 3},
-    _Disconnect = #disconnect{reason = normal},
-    {noreply, [ReadHreg, ReadIreg], State}.
+    gen_modbus:cast(?SERVER, write),
+    {noreply, [ReadHreg, ReadIreg, ReadCoil, ReadInput], State}.
 
 handle_info(_Info, State) ->
-    {noreply, [], State, 5}.
+    {noreply, [], State}.
+
+handle_cast(write, State) ->
+    WriteHreg = #write_holding_register{
+        device_number = 1,
+        register_number = 1,
+        register_value = 15
+        },
+    WriteHregs = #write_holding_registers{
+        device_number = 1,
+        register_number = 1,
+        registers_value = [13, 15]},
+    WriteCoil = #write_coil_status{
+        device_number = 1,
+        register_number = 1,
+        register_value = 0},
+    WriteCoils = #write_coils_status{
+        device_number = 1,
+        register_number = 1,
+        quantity = 4,
+        registers_value = 2#00001111},
+    Disconnect = #disconnect{reason = normal},
+    {noreply, [WriteHreg, WriteHregs, WriteCoil, WriteCoils, Disconnect], State};
 
 handle_cast(_Request, State) ->
     {noreply, [], State}.
 
 terminate(Reason, State) ->
-    io:format("Terminating reaason: ~w, state: ~w~n", [Reason, State]),
+    io:format("Terminating reason: ~w, state: ~w~n", [Reason, State]),
     ok.
