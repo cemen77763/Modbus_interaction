@@ -80,15 +80,15 @@
     {noreply, Command :: cmd(), NewState :: term(), timeout() | hibernate | {continue, term()}} |
     {stop, Reason :: term(), Command :: cmd(), NewState :: term()}.
 
--callback connect(State :: term(), NetInfo :: netinfo()) ->
+-callback connect(NetInfo :: netinfo(), State :: term()) ->
     {ok, Command :: cmd(), NewState :: term()} | 
     {stop, Reason :: term(), Command :: cmd(), NewState :: term()}.
 
--callback disconnect(State :: term(), Reason :: term()) ->
+-callback disconnect(Reason :: term(), State :: term()) ->
     {ok, Command :: cmd(), NewState :: term()} | 
     {stop, Reason :: term(), Command :: cmd(), NewState :: term()}.
 
--callback message(RegisterInfo :: record:record(), State :: term()) ->
+-callback message(RegisterInfo :: record:record() | {error, Reason :: term()}, State :: term()) ->
     {ok, Command :: cmd(), NewState :: term()} | 
     {stop, Reason :: term(), Command :: cmd(), NewState :: term()}.
 
@@ -125,22 +125,22 @@ stop(Name, Reason, Timeout) ->
 init([Mod, Args]) ->
     Res =
     try
-        {ok, Mod:init(Args)}
+        Mod:init(Args)
     catch 
         throw:R -> {ok, R};
         C:R:S -> {'EXIT', C, R, S}
     end,
     case Res of
-        {ok, {ok, Command, State}} ->  
+        {ok, Command, State} ->  
             {ok, cmd(Command, #state{mod = Mod, state = State})};
-        {ok, {ok, Command, State, Timeout}} ->    
+        {ok, Command, State, Timeout} ->    
             {ok, cmd(Command, #state{mod = Mod, state = State}), Timeout};
-        {ok, {stop, Command, Reason}} ->
+        {stop, Command, Reason} ->
             cmd(Command, #state{mod = Mod}),
             {stop, Reason};
-        {ok, ignore} ->
+        ignore ->
             ignore;
-        {ok, Else} ->
+        Else ->
             Else;
         {'EXIT', Class, Reason, Stacktrace} ->
             erlang:raise(Class, Reason, Stacktrace)
@@ -150,17 +150,17 @@ handle_continue(Info, State) ->
     Mod = State#state.mod,
     Res =
     try
-        {ok, Mod:handle_continue(Info, State#state.state)}
+        Mod:handle_continue(Info, State#state.state)
     catch 
         throw:R -> {ok, R};
         C:R:S -> {'EXIT', C, R, S}
     end,
     case Res of
-        {ok, {noreply, Command, NewState}} ->
+        {noreply, Command, NewState} ->
             {noreply, cmd(Command, State#state{state = NewState})};
-        {ok, {noreply, Command, NewState, Timeout}} ->
+        {noreply, Command, NewState, Timeout} ->
             {noreply, cmd(Command, State#state{state = NewState}), Timeout};
-        {ok, {stop, Reason, Command, NewState}} ->
+        {stop, Reason, Command, NewState} ->
             {stop, Reason, cmd(Command, State#state{state = NewState})};          
         {'EXIT', Class, Reason, Stacktrace} ->
             erlang:raise(Class, Reason, Stacktrace)          
@@ -170,28 +170,28 @@ handle_call(Request, From, State) ->
     Mod = State#state.mod,
     Res =
     try
-        {ok, Mod:handle_call(Request, From, State#state.state)}
+        Mod:handle_call(Request, From, State#state.state)
     catch 
         throw:R -> {ok, R};
         C:R:S -> {'EXIT', C, R, S}
     end,
     case Res of
-        {ok, {reply, Reply, Command, NewState}} ->
+        {reply, Reply, Command, NewState} ->
             {reply, Reply, cmd(Command, State#state{state = NewState})};
 
-        {ok, {reply, Reply, Command, NewState, Timeout}} ->
+        {reply, Reply, Command, NewState, Timeout} ->
             {reply, Reply, cmd(Command, State#state{state = NewState}), Timeout};
 
-        {ok, {noreply, Command, NewState}} ->
+        {noreply, Command, NewState} ->
             {noreply, cmd(Command, State#state{state = NewState})};
 
-        {ok, {noreply, Command, NewState, Timeout}} ->
+        {noreply, Command, NewState, Timeout} ->
             {noreply, cmd(Command, State#state{state = NewState}), Timeout};
 
-        {ok, {stop, Reason, Reply, Command, NewState}} ->
+        {stop, Reason, Reply, Command, NewState} ->
             {stop, Reason, Reply, cmd(Command, State#state{state = NewState})};
 
-        {ok, {stop, Reason, Command, NewState}} ->
+        {stop, Reason, Command, NewState} ->
             {stop, Reason, cmd(Command, State#state{state = NewState})};
 
         {'EXIT', Class, Reason, Stacktrace} ->
@@ -202,19 +202,19 @@ handle_cast(Msg, State) ->
     Mod = State#state.mod,
     Res =
     try
-        {ok, Mod:handle_cast(Msg, State#state.state)}
+        Mod:handle_cast(Msg, State#state.state)
     catch 
         throw:R -> {ok, R};
         C:R:S -> {'EXIT', C, R, S}
     end,
     case Res of
-        {ok, {noreply, Command, NewState}} ->
+        {noreply, Command, NewState} ->
             {noreply, cmd(Command, State#state{state = NewState})};
 
-        {ok, {noreply, Command, NewState, Timeout}} ->
+        {noreply, Command, NewState, Timeout} ->
             {noreply, cmd(Command, State#state{state = NewState}), Timeout};
 
-        {ok, {stop, Reason, Command, NewState}} ->
+        {stop, Reason, Command, NewState} ->
             {stop, Reason, cmd(Command, State#state{state = NewState})};
 
         {'EXIT', Class, Reason, Stacktrace} ->
@@ -227,15 +227,15 @@ handle_info({tcp_closed, Socket}, State) ->
     gen_tcp:close(Socket),
     Res = 
     try
-        {ok, Mod:disconnect(connection_closed, State#state.state)}
+        Mod:disconnect(connection_closed, State#state.state)
     catch 
             throw:R -> {ok, R};
             C:R:S -> {'EXIT', C, R, S}
     end,
     case Res of
-        {ok, {ok, Command, NewState}} ->
+        {ok, Command, NewState} ->
             {noreply, cmd(Command, State#state{state = NewState})};            
-        {ok, {stop, Reason, Command, NewState}} ->
+        {stop, Reason, Command, NewState} ->
             {stop, Reason, cmd(Command, State#state{state = NewState})};
         {'EXIT', Class, Reason, Stacktrace} ->
             erlang:raise(Class, Reason, Stacktrace)
@@ -245,19 +245,19 @@ handle_info(Info, State) ->
     Mod = State#state.mod,
     Res =
     try
-        {ok, Mod:handle_info(Info, State#state.state)}
+        Mod:handle_info(Info, State#state.state)
     catch 
         throw:R -> {ok, R};
         C:R:S -> {'EXIT', C, R, S}
     end,
     case Res of
-        {ok, {noreply, Command, NewState}} ->
+        {noreply, Command, NewState} ->
             {noreply, cmd(Command, State#state{state = NewState})};
 
-        {ok, {noreply, Command, NewState, Timeout}} ->
+        {noreply, Command, NewState, Timeout} ->
             {noreply, cmd(Command, State#state{state = NewState}), Timeout};
 
-        {ok, {stop, Reason, Command, NewState}} ->
+        {stop, Reason, Command, NewState} ->
             {stop, Reason, cmd(Command, State#state{state = NewState})};
 
         {'EXIT', Class, Reason, Stacktrace} ->
@@ -274,7 +274,7 @@ terminate(Reason, State) ->
     case erlang:function_exported(Mod, terminate, 2) of
 	true ->
 	    try
-		    {ok, Mod:terminate(Reason, State#state.state)}  
+		    Mod:terminate(Reason, State#state.state)  
         catch
 		    throw:R ->
                 {ok, R};
@@ -282,7 +282,7 @@ terminate(Reason, State) ->
                 {'EXIT', Class, R, Stacktrace}
         end;
 	false ->
-        {ok, ok}
+        ok
     end.
 
 code_change(_OldVsn, State, _Extra) ->
@@ -303,35 +303,33 @@ cmd([#connect{ip_addr = Ip_addr, port = Port} | T], S) ->
                 connection = connect}},
             Res =             
             try
-                {ok, Mod:connect(S1#state.state, S1#state.socket_info)}
+                Mod:connect(S1#state.socket_info, S1#state.state)
             catch 
                 throw:R -> {ok, R};
                 C:R:S -> {'EXIT', C, R, S}
             end,
             case Res of
-                {ok, {ok, Command, NewState}} ->
+                {ok, Command, NewState} ->
                     cmd(T ++ Command, S1#state{state = NewState});              
-                {ok, {stop, Reason, Command, NewState}} ->
+                {stop, Reason, Command, NewState} ->
                     cmd(T ++ Command, S1#state{state = NewState}),
                     gen_server:stop(self(), Reason, infinity);
                 {'EXIT', Class, Reason, Stacktrace} ->
                     erlang:raise(Class, Reason, Stacktrace)
             end;
         {error, Reason} ->
-            S1 = S#state{socket_info = #socket_info{
-                                            socket = 0,
-                                            connection = close}},
+            S1 = S#state{socket_info = #socket_info{socket = 0, connection = close}},
             Res = 
             try
-                {ok, Mod:disconnect(Reason, S1#state.state)}
+                Mod:disconnect(Reason, S1#state.state)
             catch 
                 throw:R -> {ok, R};
                 C:R:S -> {'EXIT', C, R, S}
             end,
             case Res of
-                {ok, {ok, Command, NewState}} ->
+                {ok, Command, NewState} ->
                     cmd(T ++ Command, S1#state{state = NewState});             
-                {ok, {stop, Reason, Command, NewState}} ->
+                {stop, Reason, Command, NewState} ->
                     cmd(T ++ Command, S1#state{state = NewState}),
                     gen_server:stop(self(), Reason, infinity);
                 {'EXIT', Class, Reason, Stacktrace} ->
@@ -365,15 +363,15 @@ cmd([#disconnect{reason = Reason} | T], S) ->
     S1 = S#state{socket_info = #socket_info{socket = 0, connection = close}},
     Res = 
     try
-        {ok, Mod:disconnect(Reason, S1#state.state)}
+        Mod:disconnect(Reason, S1#state.state)
     catch 
         throw:R -> {ok, R};
         C:R:S -> {'EXIT', C, R, S}
     end,
     case Res of
-        {ok, {ok, Command, NewState}} ->
+        {ok, Command, NewState} ->
             cmd(T ++ Command, S1#state{state = NewState});              
-        {ok, {stop, Reason, Command, NewState}} ->
+        {stop, Reason, Command, NewState} ->
             cmd(T ++ Command, S1#state{state = NewState}), 
             gen_server:stop(self(), Reason, infinity);
         {'EXIT', Class, Reason, Stacktrace} ->
@@ -395,20 +393,20 @@ cmd([#read_holding_registers{device_number = Dev_num, register_number = Reg_num,
                                 LData = bin_to_list16(BinData, []),
                                 Res =
                                 try
-                                    {ok, Mod:message(#read_holding_registers{
-                                                                    device_number = Dev_num,
-                                                                    register_number = Reg_num,
-                                                                    quantity = Quantity,
-                                                                    registers_value = LData
-                                                                    }, S#state.state)}      
+                                    Mod:message(#read_holding_registers{
+                                        device_number = Dev_num,
+                                        register_number = Reg_num,
+                                        quantity = Quantity,
+                                        registers_value = LData
+                                        }, S#state.state)     
                                 catch 
                                     throw:R -> {ok, R};
                                     C:R:S -> {'EXIT', C, R, S}
                                 end,
                                 case Res of
-                                    {ok, {ok, Command, NewState}} ->
+                                    {ok, Command, NewState} ->
                                         cmd(T ++ Command, S#state{state = NewState});              
-                                    {ok, {stop, Reason, Command, NewState}} ->
+                                    {stop, Reason, Command, NewState} ->
                                         cmd(T ++ Command, S#state{state = NewState}), 
                                         gen_server:stop(self(), Reason, infinity);
                                     {'EXIT', Class, Reason, Stacktrace} ->
@@ -423,15 +421,15 @@ cmd([#read_holding_registers{device_number = Dev_num, register_number = Reg_num,
                     {error, Reason} ->
                         Res = 
                         try
-                            {ok, Mod:message({error, Reason}, S#state.state)} 
+                            Mod:message({error, Reason}, S#state.state)
                         catch 
                             throw:R -> {ok, R};
                             C:R:S -> {'EXIT', C, R, S}
                         end,
                         case Res of
-                            {ok, {ok, Command, NewState}} ->
+                            {ok, Command, NewState} ->
                                 cmd(T ++ Command, S#state{state = NewState});              
-                            {ok, {stop, Reason, Command, NewState}} ->
+                            {stop, Reason, Command, NewState} ->
                                 cmd(T ++ Command, S#state{state = NewState}), 
                                 gen_server:stop(self(), Reason, infinity);
                             {'EXIT', Class, Reason, Stacktrace} ->
@@ -443,15 +441,15 @@ cmd([#read_holding_registers{device_number = Dev_num, register_number = Reg_num,
                 S1 = S#state{socket_info = #socket_info{socket = 0, connection = close}},
                 Res = 
                 try
-                    {ok, Mod:disconnect(Reason, S1#state.state)}
+                    Mod:disconnect(Reason, S1#state.state)
                 catch 
                     throw:R -> {ok, R};
                     C:R:S -> {'EXIT', C, R, S}
                 end,
                 case Res of
-                    {ok, {ok, Command, NewState}} ->
+                    {ok, Command, NewState} ->
                         cmd(T ++ Command, S1#state{state = NewState});              
-                    {ok, {stop, Reason, Command, NewState}} ->
+                    {stop, Reason, Command, NewState} ->
                         cmd(T ++ Command, S1#state{state = NewState}), 
                         gen_server:stop(self(), Reason, infinity);
                     {'EXIT', Class, Reason, Stacktrace} ->
@@ -461,15 +459,15 @@ cmd([#read_holding_registers{device_number = Dev_num, register_number = Reg_num,
         true ->
             Res = 
             try
-                {ok, Mod:disconnect(socket_closed, S#state.state)}        
+                Mod:disconnect(socket_closed, S#state.state)        
             catch 
                 throw:R -> {ok, R};
                 C:R:S -> {'EXIT', C, R, S}
             end,
             case Res of
-                {ok, {ok, Command, NewState}} ->
+                {ok, Command, NewState} ->
                     cmd(T ++ Command, S#state{state = NewState});              
-                {ok, {stop, Reason, Command, NewState}} ->
+                {stop, Reason, Command, NewState} ->
                     cmd(T ++ Command, S#state{state = NewState}), 
                     gen_server:stop(self(), Reason, infinity);
                 {'EXIT', Class, Reason, Stacktrace} ->
@@ -492,20 +490,20 @@ cmd([#read_input_registers{device_number = Dev_num, register_number = Reg_num, q
                                 LData = bin_to_list16(BinData, []),
                                 Res =
                                 try
-                                    {ok, Mod:message(#read_input_registers{
-                                                                    device_number = Dev_num,
-                                                                    register_number = Reg_num,
-                                                                    quantity = Quantity,
-                                                                    registers_value = LData
-                                                                    }, S#state.state)}      
+                                    Mod:message(#read_input_registers{
+                                        device_number = Dev_num,
+                                        register_number = Reg_num,
+                                        quantity = Quantity,
+                                        registers_value = LData
+                                        }, S#state.state)     
                                 catch 
                                     throw:R -> {ok, R};
                                     C:R:S -> {'EXIT', C, R, S}
                                 end,
                                 case Res of
-                                    {ok, {ok, Command, NewState}} ->
+                                    {ok, Command, NewState} ->
                                         cmd(T ++ Command, S#state{state = NewState});              
-                                    {ok, {stop, Reason, Command, NewState}} ->
+                                    {stop, Reason, Command, NewState} ->
                                         cmd(T ++ Command, S#state{state = NewState}), 
                                         gen_server:stop(self(), Reason, infinity);
                                     {'EXIT', Class, Reason, Stacktrace} ->
@@ -520,15 +518,15 @@ cmd([#read_input_registers{device_number = Dev_num, register_number = Reg_num, q
                     {error, Reason} ->
                         Res = 
                         try
-                            {ok, Mod:message({error, Reason}, S#state.state)} 
+                            Mod:message({error, Reason}, S#state.state) 
                         catch 
                             throw:R -> {ok, R};
                             C:R:S -> {'EXIT', C, R, S}
                         end,
                         case Res of
-                            {ok, {ok, Command, NewState}} ->
+                            {ok, Command, NewState} ->
                                 cmd(T ++ Command, S#state{state = NewState});              
-                            {ok, {stop, Reason, Command, NewState}} ->
+                            {stop, Reason, Command, NewState} ->
                                 cmd(T ++ Command, S#state{state = NewState}), 
                                 gen_server:stop(self(), Reason, infinity);
                             {'EXIT', Class, Reason, Stacktrace} ->
@@ -540,15 +538,15 @@ cmd([#read_input_registers{device_number = Dev_num, register_number = Reg_num, q
                 S1 = S#state{socket_info = #socket_info{socket = 0, connection = close}},
                 Res = 
                 try
-                    {ok, Mod:disconnect(Reason, S1#state.state)}
+                    Mod:disconnect(Reason, S1#state.state)
                 catch 
                     throw:R -> {ok, R};
                     C:R:S -> {'EXIT', C, R, S}
                 end,
                 case Res of
-                    {ok, {ok, Command, NewState}} ->
+                    {ok, Command, NewState} ->
                         cmd(T ++ Command, S1#state{state = NewState});              
-                    {ok, {stop, Reason, Command, NewState}} ->
+                    {stop, Reason, Command, NewState} ->
                         cmd(T ++ Command, S1#state{state = NewState}), 
                         gen_server:stop(self(), Reason, infinity);
                     {'EXIT', Class, Reason, Stacktrace} ->
@@ -558,15 +556,15 @@ cmd([#read_input_registers{device_number = Dev_num, register_number = Reg_num, q
         true ->
             Res = 
             try
-                {ok, Mod:disconnect(socket_closed, S#state.state)}        
+                Mod:disconnect(socket_closed, S#state.state)       
             catch 
                 throw:R -> {ok, R};
                 C:R:S -> {'EXIT', C, R, S}
             end,
             case Res of
-                {ok, {ok, Command, NewState}} ->
+                {ok, Command, NewState} ->
                     cmd(T ++ Command, S#state{state = NewState});              
-                {ok, {stop, Reason, Command, NewState}} ->
+                {stop, Reason, Command, NewState} ->
                     cmd(T ++ Command, S#state{state = NewState}), 
                     gen_server:stop(self(), Reason, infinity);
                 {'EXIT', Class, Reason, Stacktrace} ->
@@ -588,20 +586,20 @@ cmd([#read_coils_status{device_number = Dev_num, register_number = Reg_num, quan
                             <<1:16, 0:16, 4:16, Dev_num:8, ?FUN_CODE_READ_COILS:8, Data/binary>> ->
                                 Res =
                                 try
-                                    {ok, Mod:message(#read_coils_status{
-                                                                    device_number = Dev_num,
-                                                                    register_number = Reg_num,
-                                                                    quantity = Quantity,
-                                                                    registers_value = Data
-                                                                    }, S#state.state)}      
+                                    Mod:message(#read_coils_status{
+                                        device_number = Dev_num,
+                                        register_number = Reg_num,
+                                        quantity = Quantity,
+                                        registers_value = Data
+                                        }, S#state.state)      
                                 catch 
                                     throw:R -> {ok, R};
                                     C:R:S -> {'EXIT', C, R, S}
                                 end,
                                 case Res of
-                                    {ok, {ok, Command, NewState}} ->
+                                    {ok, Command, NewState} ->
                                         cmd(T ++ Command, S#state{state = NewState});              
-                                    {ok, {stop, Reason, Command, NewState}} ->
+                                    {stop, Reason, Command, NewState} ->
                                         cmd(T ++ Command, S#state{state = NewState}), 
                                         gen_server:stop(self(), Reason, infinity);
                                     {'EXIT', Class, Reason, Stacktrace} ->
@@ -616,15 +614,15 @@ cmd([#read_coils_status{device_number = Dev_num, register_number = Reg_num, quan
                     {error, Reason} ->
                         Res = 
                         try
-                            {ok, Mod:message({error, Reason}, S#state.state)} 
+                            Mod:message({error, Reason}, S#state.state)
                         catch 
                             throw:R -> {ok, R};
                             C:R:S -> {'EXIT', C, R, S}
                         end,
                         case Res of
-                            {ok, {ok, Command, NewState}} ->
+                            {ok, Command, NewState} ->
                                 cmd(T ++ Command, S#state{state = NewState});              
-                            {ok, {stop, Reason, Command, NewState}} ->
+                            {stop, Reason, Command, NewState} ->
                                 cmd(T ++ Command, S#state{state = NewState}), 
                                 gen_server:stop(self(), Reason, infinity);
                             {'EXIT', Class, Reason, Stacktrace} ->
@@ -636,15 +634,15 @@ cmd([#read_coils_status{device_number = Dev_num, register_number = Reg_num, quan
                 S1 = S#state{socket_info = #socket_info{socket = 0, connection = close}},
                 Res = 
                 try
-                    {ok, Mod:disconnect(Reason, S1#state.state)}
+                    Mod:disconnect(Reason, S1#state.state)
                 catch 
                     throw:R -> {ok, R};
                     C:R:S -> {'EXIT', C, R, S}
                 end,
                 case Res of
-                    {ok, {ok, Command, NewState}} ->
+                    {ok, Command, NewState} ->
                         cmd(T ++ Command, S1#state{state = NewState});              
-                    {ok, {stop, Reason, Command, NewState}} ->
+                    {stop, Reason, Command, NewState} ->
                         cmd(T ++ Command, S1#state{state = NewState}), 
                         gen_server:stop(self(), Reason, infinity);
                     {'EXIT', Class, Reason, Stacktrace} ->
@@ -654,15 +652,15 @@ cmd([#read_coils_status{device_number = Dev_num, register_number = Reg_num, quan
         true ->
             Res = 
             try
-                {ok, Mod:disconnect(socket_closed, S#state.state)}        
+                Mod:disconnect(socket_closed, S#state.state)       
             catch 
                 throw:R -> {ok, R};
                 C:R:S -> {'EXIT', C, R, S}
             end,
             case Res of
-                {ok, {ok, Command, NewState}} ->
+                {ok, Command, NewState} ->
                     cmd(T ++ Command, S#state{state = NewState});              
-                {ok, {stop, Reason, Command, NewState}} ->
+                {stop, Reason, Command, NewState} ->
                     cmd(T ++ Command, S#state{state = NewState}), 
                     gen_server:stop(self(), Reason, infinity);
                 {'EXIT', Class, Reason, Stacktrace} ->
@@ -684,20 +682,20 @@ cmd([#read_inputs_status{device_number = Dev_num, register_number = Reg_num, qua
                             <<1:16, 0:16, 3:16, Dev_num:8, ?FUN_CODE_READ_INPUTS:8, Data/binary>> ->
                                 Res =
                                 try
-                                    {ok, Mod:message(#read_inputs_status{
-                                                                    device_number = Dev_num,
-                                                                    register_number = Reg_num,
-                                                                    quantity = Quantity,
-                                                                    registers_value = Data
-                                                                    }, S#state.state)}      
+                                    Mod:message(#read_inputs_status{
+                                        device_number = Dev_num,
+                                        register_number = Reg_num,
+                                        quantity = Quantity,
+                                        registers_value = Data
+                                        }, S#state.state)      
                                 catch 
                                     throw:R -> {ok, R};
                                     C:R:S -> {'EXIT', C, R, S}
                                 end,
                                 case Res of
-                                    {ok, {ok, Command, NewState}} ->
+                                    {ok, Command, NewState} ->
                                         cmd(T ++ Command, S#state{state = NewState});              
-                                    {ok, {stop, Reason, Command, NewState}} ->
+                                    {stop, Reason, Command, NewState} ->
                                         cmd(T ++ Command, S#state{state = NewState}), 
                                         gen_server:stop(self(), Reason, infinity);
                                     {'EXIT', Class, Reason, Stacktrace} ->
@@ -712,15 +710,15 @@ cmd([#read_inputs_status{device_number = Dev_num, register_number = Reg_num, qua
                     {error, Reason} ->
                         Res = 
                         try
-                            {ok, Mod:message({error, Reason}, S#state.state)} 
+                            Mod:message({error, Reason}, S#state.state)
                         catch 
                             throw:R -> {ok, R};
                             C:R:S -> {'EXIT', C, R, S}
                         end,
                         case Res of
-                            {ok, {ok, Command, NewState}} ->
+                            {ok, Command, NewState} ->
                                 cmd(T ++ Command, S#state{state = NewState});              
-                            {ok, {stop, Reason, Command, NewState}} ->
+                            {stop, Reason, Command, NewState} ->
                                 cmd(T ++ Command, S#state{state = NewState}), 
                                 gen_server:stop(self(), Reason, infinity);
                             {'EXIT', Class, Reason, Stacktrace} ->
@@ -732,15 +730,15 @@ cmd([#read_inputs_status{device_number = Dev_num, register_number = Reg_num, qua
                 S1 = S#state{socket_info = #socket_info{socket = 0, connection = close}},
                 Res = 
                 try
-                    {ok, Mod:disconnect(Reason, S1#state.state)}
+                    Mod:disconnect(Reason, S1#state.state)
                 catch 
                     throw:R -> {ok, R};
                     C:R:S -> {'EXIT', C, R, S}
                 end,
                 case Res of
-                    {ok, {ok, Command, NewState}} ->
+                    {ok, Command, NewState} ->
                         cmd(T ++ Command, S1#state{state = NewState});              
-                    {ok, {stop, Reason, Command, NewState}} ->
+                    {stop, Reason, Command, NewState} ->
                         cmd(T ++ Command, S1#state{state = NewState}), 
                         gen_server:stop(self(), Reason, infinity);
                     {'EXIT', Class, Reason, Stacktrace} ->
@@ -750,15 +748,15 @@ cmd([#read_inputs_status{device_number = Dev_num, register_number = Reg_num, qua
         true ->
             Res = 
             try
-                {ok, Mod:disconnect(socket_closed, S#state.state)}        
+                Mod:disconnect(socket_closed, S#state.state)       
             catch 
                 throw:R -> {ok, R};
                 C:R:S -> {'EXIT', C, R, S}
             end,
             case Res of
-                {ok, {ok, Command, NewState}} ->
+                {ok, Command, NewState} ->
                     cmd(T ++ Command, S#state{state = NewState});              
-                {ok, {stop, Reason, Command, NewState}} ->
+                {stop, Reason, Command, NewState} ->
                     cmd(T ++ Command, S#state{state = NewState}), 
                     gen_server:stop(self(), Reason, infinity);
                 {'EXIT', Class, Reason, Stacktrace} ->
@@ -780,19 +778,19 @@ cmd([#write_holding_register{device_number = Dev_num, register_number = Reg_num,
                             <<1:16, 0:16, 6:16, Dev_num:8, ?FUN_CODE_WRITE_HREG:8, Reg_num:16, Value:16>> ->
                                 Res =
                                 try
-                                    {ok, Mod:message(#write_holding_register{
-                                                                    device_number = Dev_num,
-                                                                    register_number = Reg_num,
-                                                                    register_value = Value
-                                                                    }, S#state.state)}      
+                                    Mod:message(#write_holding_register{
+                                        device_number = Dev_num,
+                                        register_number = Reg_num,
+                                        register_value = Value
+                                        }, S#state.state)     
                                 catch 
                                     throw:R -> {ok, R};
                                     C:R:S -> {'EXIT', C, R, S}
                                 end,
                                 case Res of
-                                    {ok, {ok, Command, NewState}} ->
+                                    {ok, Command, NewState} ->
                                         cmd(T ++ Command, S#state{state = NewState});              
-                                    {ok, {stop, Reason, Command, NewState}} ->
+                                    {stop, Reason, Command, NewState} ->
                                         cmd(T ++ Command, S#state{state = NewState}), 
                                         gen_server:stop(self(), Reason, infinity);
                                     {'EXIT', Class, Reason, Stacktrace} ->
@@ -807,15 +805,15 @@ cmd([#write_holding_register{device_number = Dev_num, register_number = Reg_num,
                     {error, Reason} ->
                         Res = 
                         try
-                            {ok, Mod:message({error, Reason}, S#state.state)} 
+                            Mod:message({error, Reason}, S#state.state) 
                         catch 
                             throw:R -> {ok, R};
                             C:R:S -> {'EXIT', C, R, S}
                         end,
                         case Res of
-                            {ok, {ok, Command, NewState}} ->
+                            {ok, Command, NewState} ->
                                 cmd(T ++ Command, S#state{state = NewState});              
-                            {ok, {stop, Reason, Command, NewState}} ->
+                            {stop, Reason, Command, NewState} ->
                                 cmd(T ++ Command, S#state{state = NewState}), 
                                 gen_server:stop(self(), Reason, infinity);
                             {'EXIT', Class, Reason, Stacktrace} ->
@@ -827,15 +825,15 @@ cmd([#write_holding_register{device_number = Dev_num, register_number = Reg_num,
                 S1 = S#state{socket_info = #socket_info{socket = 0, connection = close}},
                 Res = 
                 try
-                    {ok, Mod:disconnect(Reason, S1#state.state)}
+                    Mod:disconnect(Reason, S1#state.state)
                 catch 
                     throw:R -> {ok, R};
                     C:R:S -> {'EXIT', C, R, S}
                 end,
                 case Res of
-                    {ok, {ok, Command, NewState}} ->
+                    {ok, Command, NewState} ->
                         cmd(T ++ Command, S1#state{state = NewState});              
-                    {ok, {stop, Reason, Command, NewState}} ->
+                    {stop, Reason, Command, NewState} ->
                         cmd(T ++ Command, S1#state{state = NewState}), 
                         gen_server:stop(self(), Reason, infinity);
                     {'EXIT', Class, Reason, Stacktrace} ->
@@ -845,15 +843,15 @@ cmd([#write_holding_register{device_number = Dev_num, register_number = Reg_num,
         true ->
             Res = 
             try
-                {ok, Mod:disconnect(socket_closed, S#state.state)}        
+                Mod:disconnect(socket_closed, S#state.state)       
             catch 
                 throw:R -> {ok, R};
                 C:R:S -> {'EXIT', C, R, S}
             end,
             case Res of
-                {ok, {ok, Command, NewState}} ->
+                {ok, Command, NewState} ->
                     cmd(T ++ Command, S#state{state = NewState});              
-                {ok, {stop, Reason, Command, NewState}} ->
+                {stop, Reason, Command, NewState} ->
                     cmd(T ++ Command, S#state{state = NewState}), 
                     gen_server:stop(self(), Reason, infinity);
                 {'EXIT', Class, Reason, Stacktrace} ->
@@ -878,19 +876,19 @@ cmd([#write_holding_registers{device_number = Dev_num, register_number = Reg_num
                             <<1:16, 0:16, 6:16, Dev_num:8, ?FUN_CODE_WRITE_HREGS:8, Reg_num:16, Reg_quantity:16>> ->
                                 Res =
                                 try
-                                    {ok, Mod:message(#write_holding_registers{
-                                                                    device_number = Dev_num,
-                                                                    register_number = Reg_num,
-                                                                    registers_value = Values
-                                                                    }, S#state.state)}      
+                                    Mod:message(#write_holding_registers{
+                                        device_number = Dev_num,
+                                        register_number = Reg_num,
+                                        registers_value = Values
+                                        }, S#state.state)      
                                 catch 
                                     throw:R -> {ok, R};
                                     C:R:S -> {'EXIT', C, R, S}
                                 end,
                                 case Res of
-                                    {ok, {ok, Command, NewState}} ->
+                                    {ok, Command, NewState} ->
                                         cmd(T ++ Command, S#state{state = NewState});              
-                                    {ok, {stop, Reason, Command, NewState}} ->
+                                    {stop, Reason, Command, NewState} ->
                                         cmd(T ++ Command, S#state{state = NewState}), 
                                         gen_server:stop(self(), Reason, infinity);
                                     {'EXIT', Class, Reason, Stacktrace} ->
@@ -905,15 +903,15 @@ cmd([#write_holding_registers{device_number = Dev_num, register_number = Reg_num
                     {error, Reason} ->
                         Res = 
                         try
-                            {ok, Mod:message({error, Reason}, S#state.state)} 
+                            Mod:message({error, Reason}, S#state.state) 
                         catch 
                             throw:R -> {ok, R};
                             C:R:S -> {'EXIT', C, R, S}
                         end,
                         case Res of
-                            {ok, {ok, Command, NewState}} ->
+                            {ok, Command, NewState} ->
                                 cmd(T ++ Command, S#state{state = NewState});              
-                            {ok, {stop, Reason, Command, NewState}} ->
+                            {stop, Reason, Command, NewState} ->
                                 cmd(T ++ Command, S#state{state = NewState}), 
                                 gen_server:stop(self(), Reason, infinity);
                             {'EXIT', Class, Reason, Stacktrace} ->
@@ -925,15 +923,15 @@ cmd([#write_holding_registers{device_number = Dev_num, register_number = Reg_num
                 S1 = S#state{socket_info = #socket_info{socket = 0, connection = close}},
                 Res = 
                 try
-                    {ok, Mod:disconnect(Reason, S1#state.state)}
+                    Mod:disconnect(Reason, S1#state.state)
                 catch 
                     throw:R -> {ok, R};
                     C:R:S -> {'EXIT', C, R, S}
                 end,
                 case Res of
-                    {ok, {ok, Command, NewState}} ->
+                    {ok, Command, NewState} ->
                         cmd(T ++ Command, S1#state{state = NewState});              
-                    {ok, {stop, Reason, Command, NewState}} ->
+                    {stop, Reason, Command, NewState} ->
                         cmd(T ++ Command, S1#state{state = NewState}), 
                         gen_server:stop(self(), Reason, infinity);
                     {'EXIT', Class, Reason, Stacktrace} ->
@@ -943,15 +941,15 @@ cmd([#write_holding_registers{device_number = Dev_num, register_number = Reg_num
         true ->
             Res = 
             try
-                {ok, Mod:disconnect(socket_closed, S#state.state)}        
+                Mod:disconnect(socket_closed, S#state.state)       
             catch 
                 throw:R -> {ok, R};
                 C:R:S -> {'EXIT', C, R, S}
             end,
             case Res of
-                {ok, {ok, Command, NewState}} ->
+                {ok, Command, NewState} ->
                     cmd(T ++ Command, S#state{state = NewState});              
-                {ok, {stop, Reason, Command, NewState}} ->
+                {stop, Reason, Command, NewState} ->
                     cmd(T ++ Command, S#state{state = NewState}), 
                     gen_server:stop(self(), Reason, infinity);
                 {'EXIT', Class, Reason, Stacktrace} ->
@@ -973,20 +971,20 @@ cmd([#write_coils_status{device_number = Dev_num, register_number = Reg_num, qua
                             <<1:16, 0:16, 6:16, Dev_num:8, ?FUN_CODE_WRITE_COILS:8, Reg_num:16, Quantity:16>> ->
                                 Res =
                                 try
-                                    {ok, Mod:message(#write_coils_status{
-                                                            device_number = Dev_num,
-                                                            register_number = Reg_num,
-                                                            registers_value = Value,
-                                                            quantity = Quantity
-                                                            }, S#state.state)}      
+                                    Mod:message(#write_coils_status{
+                                        device_number = Dev_num,
+                                        register_number = Reg_num,
+                                        registers_value = Value,
+                                        quantity = Quantity
+                                        }, S#state.state)      
                                 catch 
                                     throw:R -> {ok, R};
                                     C:R:S -> {'EXIT', C, R, S}
                                 end,
                                 case Res of
-                                    {ok, {ok, Command, NewState}} ->
+                                    {ok, Command, NewState} ->
                                         cmd(T ++ Command, S#state{state = NewState});              
-                                    {ok, {stop, Reason, Command, NewState}} ->
+                                    {stop, Reason, Command, NewState} ->
                                         cmd(T ++ Command, S#state{state = NewState}), 
                                         gen_server:stop(self(), Reason, infinity);
                                     {'EXIT', Class, Reason, Stacktrace} ->
@@ -1001,15 +999,15 @@ cmd([#write_coils_status{device_number = Dev_num, register_number = Reg_num, qua
                     {error, Reason} ->
                         Res = 
                         try
-                            {ok, Mod:message({error, Reason}, S#state.state)} 
+                            Mod:message({error, Reason}, S#state.state) 
                         catch 
                             throw:R -> {ok, R};
                             C:R:S -> {'EXIT', C, R, S}
                         end,
                         case Res of
-                            {ok, {ok, Command, NewState}} ->
+                            {ok, Command, NewState} ->
                                 cmd(T ++ Command, S#state{state = NewState});              
-                            {ok, {stop, Reason, Command, NewState}} ->
+                            {stop, Reason, Command, NewState} ->
                                 cmd(T ++ Command, S#state{state = NewState}), 
                                 gen_server:stop(self(), Reason, infinity);
                             {'EXIT', Class, Reason, Stacktrace} ->
@@ -1021,15 +1019,15 @@ cmd([#write_coils_status{device_number = Dev_num, register_number = Reg_num, qua
                 S1 = S#state{socket_info = #socket_info{socket = 0, connection = close}},
                 Res = 
                 try
-                    {ok, Mod:disconnect(Reason, S1#state.state)}
+                    Mod:disconnect(Reason, S1#state.state)
                 catch 
                     throw:R -> {ok, R};
                     C:R:S -> {'EXIT', C, R, S}
                 end,
                 case Res of
-                    {ok, {ok, Command, NewState}} ->
+                    {ok, Command, NewState} ->
                         cmd(T ++ Command, S1#state{state = NewState});              
-                    {ok, {stop, Reason, Command, NewState}} ->
+                    {stop, Reason, Command, NewState} ->
                         cmd(T ++ Command, S1#state{state = NewState}), 
                         gen_server:stop(self(), Reason, infinity);
                     {'EXIT', Class, Reason, Stacktrace} ->
@@ -1039,15 +1037,15 @@ cmd([#write_coils_status{device_number = Dev_num, register_number = Reg_num, qua
         true ->
             Res = 
             try
-                {ok, Mod:disconnect(socket_closed, S#state.state)}        
+                Mod:disconnect(socket_closed, S#state.state)        
             catch 
                 throw:R -> {ok, R};
                 C:R:S -> {'EXIT', C, R, S}
             end,
             case Res of
-                {ok, {ok, Command, NewState}} ->
+                {ok, Command, NewState} ->
                     cmd(T ++ Command, S#state{state = NewState});              
-                {ok, {stop, Reason, Command, NewState}} ->
+                {stop, Reason, Command, NewState} ->
                     cmd(T ++ Command, S#state{state = NewState}), 
                     gen_server:stop(self(), Reason, infinity);
                 {'EXIT', Class, Reason, Stacktrace} ->
@@ -1081,19 +1079,19 @@ cmd([#write_coil_status{device_number = Dev_num, register_number = Reg_num, regi
                             <<1:16, 0:16, 6:16, Dev_num:8, ?FUN_CODE_WRITE_COIL:8, Reg_num:16, Var:16>> ->
                                 Res =
                                 try
-                                    {ok, Mod:message(#write_coil_status{
-                                                            device_number = Dev_num,
-                                                            register_number = Reg_num,
-                                                            register_value = Value
-                                                            }, S#state.state)}      
+                                    Mod:message(#write_coil_status{
+                                        device_number = Dev_num,
+                                        register_number = Reg_num,
+                                        register_value = Value
+                                        }, S#state.state)      
                                 catch 
                                     throw:R -> {ok, R};
                                     C:R:S -> {'EXIT', C, R, S}
                                 end,
                                 case Res of
-                                    {ok, {ok, Command, NewState}} ->
+                                    {ok, Command, NewState} ->
                                         cmd(T ++ Command, S#state{state = NewState});              
-                                    {ok, {stop, Reason, Command, NewState}} ->
+                                    {stop, Reason, Command, NewState} ->
                                         cmd(T ++ Command, S#state{state = NewState}), 
                                         gen_server:stop(self(), Reason, infinity);
                                     {'EXIT', Class, Reason, Stacktrace} ->
@@ -1108,15 +1106,15 @@ cmd([#write_coil_status{device_number = Dev_num, register_number = Reg_num, regi
                     {error, Reason} ->
                         Res = 
                         try
-                            {ok, Mod:message({error, Reason}, S#state.state)} 
+                            Mod:message({error, Reason}, S#state.state)
                         catch 
                             throw:R -> {ok, R};
                             C:R:S -> {'EXIT', C, R, S}
                         end,
                         case Res of
-                            {ok, {ok, Command, NewState}} ->
+                            {ok, Command, NewState} ->
                                 cmd(T ++ Command, S#state{state = NewState});              
-                            {ok, {stop, Reason, Command, NewState}} ->
+                            {stop, Reason, Command, NewState} ->
                                 cmd(T ++ Command, S#state{state = NewState}), 
                                 gen_server:stop(self(), Reason, infinity);
                             {'EXIT', Class, Reason, Stacktrace} ->
@@ -1128,15 +1126,15 @@ cmd([#write_coil_status{device_number = Dev_num, register_number = Reg_num, regi
                 S1 = S#state{socket_info = #socket_info{socket = 0, connection = close}},
                 Res = 
                 try
-                    {ok, Mod:disconnect(Reason, S1#state.state)}
+                    Mod:disconnect(Reason, S1#state.state)
                 catch 
                     throw:R -> {ok, R};
                     C:R:S -> {'EXIT', C, R, S}
                 end,
                 case Res of
-                    {ok, {ok, Command, NewState}} ->
+                    {ok, Command, NewState} ->
                         cmd(T ++ Command, S1#state{state = NewState});              
-                    {ok, {stop, Reason, Command, NewState}} ->
+                    {stop, Reason, Command, NewState} ->
                         cmd(T ++ Command, S1#state{state = NewState}), 
                         gen_server:stop(self(), Reason, infinity);
                     {'EXIT', Class, Reason, Stacktrace} ->
@@ -1146,15 +1144,15 @@ cmd([#write_coil_status{device_number = Dev_num, register_number = Reg_num, regi
         true ->
             Res = 
             try
-                {ok, Mod:disconnect(socket_closed, S#state.state)}        
+                Mod:disconnect(socket_closed, S#state.state)       
             catch 
                 throw:R -> {ok, R};
                 C:R:S -> {'EXIT', C, R, S}
             end,
             case Res of
-                {ok, {ok, Command, NewState}} ->
+                {ok, Command, NewState} ->
                     cmd(T ++ Command, S#state{state = NewState});              
-                {ok, {stop, Reason, Command, NewState}} ->
+                {stop, Reason, Command, NewState} ->
                     cmd(T ++ Command, S#state{state = NewState}), 
                     gen_server:stop(self(), Reason, infinity);
                 {'EXIT', Class, Reason, Stacktrace} ->

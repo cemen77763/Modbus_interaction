@@ -39,7 +39,7 @@ init([]) ->
     Connect = #connect{ip_addr = "localhost", port = 5000},
     {ok, [ChangeSopts, Connect], 5, {continue, read}}.
 
-connect(State, #socket_info{ip_addr = Ip_addr, port = Port}) ->
+connect(#socket_info{ip_addr = Ip_addr, port = Port}, State) ->
     io:format("Connection fine Ip addr: ~w Port ~w~n", [Ip_addr, Port]),
     {ok, [], State}.
 
