@@ -1,7 +1,7 @@
-%%% ----------------------------------------------------------------------------------------- 
-%%% @doc Interaction with modbus TCP devices using gen_modbus behaviour 
-%%% @end                                                                                      
-%%% ----------------------------------------------------------------------------------------- 
+%%% -----------------------------------------------------------------------------------------
+%%% @doc Interaction with modbus TCP devices using gen_modbus behaviour
+%%% @end
+%%% -----------------------------------------------------------------------------------------
 -module(modbus_tcp).
 
 -behaviour(gen_modbus).
@@ -73,7 +73,7 @@ message(#read_coils_status{device_number = Dev_num, register_number = Reg_num, q
     ReadInput = #read_inputs_status{
         device_number = 1,
         register_number = 12,
-        quantity = 5},  
+        quantity = 5},
     io:format("~nReading coils status~ndevice: ~w~nfirst register: ~w~ndata: ~w~n~n", [Dev_num, Reg_num, Bdata]),
     {ok, [ReadInput], State};
 
@@ -86,7 +86,7 @@ message(#write_holding_register{device_number = Dev_num, register_number = Reg_n
     WriteHregs = #write_holding_registers{
         device_number = 1,
         register_number = 2,
-        registers_value = [13, 14]},
+        registers_value = [13, 14, 15, 16, 17, 18, 19, 20]},
     io:format("~nWriting holding register~ndevice: ~w~nfirst register: ~w~ndata: ~w~n~n", [Dev_num, Reg_num, Ldata]),
     {ok, [WriteHregs], State};
 
