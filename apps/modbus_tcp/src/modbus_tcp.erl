@@ -36,33 +36,84 @@ stop() ->
 
 init([]) ->
     ChangeSopts = #change_sock_opts{active = false, reuseaddr = true, nodelay = true, ifaddr = inet},
-    Connect = #connect{ip_addr = "localhost", port = 5000},
-    {ok, [ChangeSopts, Connect], 5, {continue, read}}.
+    Connect = #connect{ip_addr = "localhost", port = 500},
+    {ok, [ChangeSopts, Connect], 5}.
 
 connect(#socket_info{ip_addr = Ip_addr, port = Port}, State) ->
+    WriteHreg = #write_holding_register{
+        device_number = 1,
+        register_number = 1,
+        register_value = 15
+        },
     io:format("Connection fine Ip addr: ~w Port ~w~n", [Ip_addr, Port]),
-    {ok, [], State}.
+    {ok, [WriteHreg], State}.
 
 disconnect(Reason, State) ->
     io:format("Disconected because ~w.~n", [Reason]),
-    _Connect = #connect{ip_addr = "localhost", port = 5000},
+    _Connect = #connect{ip_addr = "localhost", port = 500},
     {ok, [], State}.
 
-message(#read_holding_registers{
-    device_number = Dev_num,
-    register_number = Reg_num,
-    registers_value = LData
-    }, State) ->
-    io:format("~nReading holding registers~ndevice: ~w~nfirst register:~w~ndata: ~w~n~n", [Dev_num, Reg_num, LData]),
-    {ok, [], State};
+message(#read_holding_registers{device_number = Dev_num, register_number = Reg_num, registers_value = Ldata}, State) ->
+    ReadIreg = #read_input_registers{
+        device_number = 1,
+        register_number = 1,
+        quantity = 5},
+    io:format("~nReading holding registers~ndevice: ~w~nfirst register:~w~ndata: ~w~n~n", [Dev_num, Reg_num, Ldata]),
+    {ok, [ReadIreg], State};
 
-message(#read_input_registers{
-    device_number = Dev_num,
-    register_number = Reg_num,
-    registers_value = LData
-    }, State) ->
-    io:format("~nReading holding registers~ndevice: ~w~nfirst register:~w~ndata: ~w~n~n", [Dev_num, Reg_num, LData]),
-    {ok, [], State};    
+message(#read_input_registers{device_number = Dev_num, register_number = Reg_num, registers_value = Ldata}, State) ->
+    ReadCoils = #read_coils_status{
+        device_number = 1,
+        register_number = 2,
+        quantity = 3},
+    io:format("~nReading input registers~ndevice: ~w~nfirst register: ~w~ndata: ~w~n~n", [Dev_num, Reg_num, Ldata]),
+    {ok, [ReadCoils], State};
+
+message(#read_coils_status{device_number = Dev_num, register_number = Reg_num, quantity = _Quantity, registers_value = Bdata}, State) ->
+    ReadInput = #read_inputs_status{
+        device_number = 1,
+        register_number = 12,
+        quantity = 5},  
+    io:format("~nReading coils status~ndevice: ~w~nfirst register: ~w~ndata: ~w~n~n", [Dev_num, Reg_num, Bdata]),
+    {ok, [ReadInput], State};
+
+message(#read_inputs_status{device_number = Dev_num, register_number = Reg_num, quantity = _Quantity, registers_value = Bdata}, State) ->
+    Disconnect = #disconnect{reason = normal},
+    io:format("~nReading inputs status~ndevice: ~w~nfirst register: ~w~ndata: ~w~n~n", [Dev_num, Reg_num, Bdata]),
+    {ok, [Disconnect], State};
+
+message(#write_holding_register{device_number = Dev_num, register_number = Reg_num, register_value = Ldata}, State) ->
+    WriteHregs = #write_holding_registers{
+        device_number = 1,
+        register_number = 2,
+        registers_value = [13, 14]},
+    io:format("~nWriting holding register~ndevice: ~w~nfirst register: ~w~ndata: ~w~n~n", [Dev_num, Reg_num, Ldata]),
+    {ok, [WriteHregs], State};
+
+message(#write_holding_registers{device_number = Dev_num, register_number = Reg_num, registers_value = Ldata}, State) ->
+    ReadHreg = #read_holding_registers{
+        device_number = 1,
+        register_number = 1,
+        quantity = 5},
+    io:format("~nWriting holding registers~ndevice: ~w~nfirst register: ~w~ndata: ~w~n~n", [Dev_num, Reg_num, Ldata]),
+    {ok, [ReadHreg], State};
+
+message(#write_coil_status{device_number = Dev_num, register_number = Reg_num, register_value = Data}, State) ->
+    WriteCoils = #write_coils_status{
+        device_number = 1,
+        register_number = 1,
+        quantity = 1,
+        registers_value = 1},
+    io:format("~nWriting coil status~ndevice: ~w~nfirst register: ~w~ndata: ~w~n~n", [Dev_num, Reg_num, Data]),
+    {ok, [WriteCoils], State};
+
+message(#write_coils_status{device_number = Dev_num, register_number = Reg_num, quantity = _Quantity, registers_value = Bdata}, State) ->
+    ReadHreg = #read_holding_registers{
+        device_number = 1,
+        register_number = 1,
+        quantity = 5},
+    io:format("~nWriting coils status~ndevice: ~w~nfirst register: ~w~ndata: ~w~n~n", [Dev_num, Reg_num, Bdata]),
+    {ok, [ReadHreg], State};
 
 message(_RegInfo, State) ->
     {ok, [], State}.
@@ -71,49 +122,13 @@ handle_call(Request, _From, State) ->
     {reply, Request, [], State}.
 
 handle_continue(read, State) ->
-    ReadHreg = #read_holding_registers{
-        device_number = 1,
-        register_number = 1,
-        quantity = 4},
-    ReadIreg = #read_input_registers{
-        device_number = 1,
-        register_number = 1,
-        quantity = 2},
-    ReadCoil = #read_coils_status{
-        device_number = 1,
-        register_number = 1,
-        quantity = 1},
-    ReadInput = #read_inputs_status{
-        device_number = 1,
-        register_number = 2,
-        quantity = 3},
-    gen_modbus:cast(?SERVER, write),
-    {noreply, [ReadHreg, ReadIreg, ReadCoil, ReadInput], State}.
+    {noreply, [], State}.
 
 handle_info(_Info, State) ->
     {noreply, [], State}.
 
 handle_cast(write, State) ->
-    WriteHreg = #write_holding_register{
-        device_number = 1,
-        register_number = 1,
-        register_value = 15
-        },
-    WriteHregs = #write_holding_registers{
-        device_number = 1,
-        register_number = 1,
-        registers_value = [13, 15]},
-    WriteCoil = #write_coil_status{
-        device_number = 1,
-        register_number = 1,
-        register_value = 0},
-    WriteCoils = #write_coils_status{
-        device_number = 1,
-        register_number = 1,
-        quantity = 4,
-        registers_value = 2#00001111},
-    Disconnect = #disconnect{reason = normal},
-    {noreply, [WriteHreg, WriteHregs, WriteCoil, WriteCoils, Disconnect], State};
+    {noreply, [], State};
 
 handle_cast(_Request, State) ->
     {noreply, [], State}.

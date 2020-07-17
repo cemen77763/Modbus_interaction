@@ -75,8 +75,8 @@
     quantity :: integer(),
     registers_value :: binary()
     }).
-
 %%% ------------------------- COMMANDS RECORDS -------------------------
+
 -define(FUN_CODE_READ_COILS,    16#01).
 -define(FUN_CODE_READ_INPUTS,   16#02).
 -define(FUN_CODE_READ_HREGS,    16#03).

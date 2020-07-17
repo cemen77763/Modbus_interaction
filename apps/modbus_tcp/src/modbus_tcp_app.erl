@@ -29,7 +29,6 @@ stop(_State) ->
 start_link() ->
     supervisor:start_link({local, ?MODULE}, ?MODULE, []).
 
-
 %% sup_flags() = #{strategy => strategy(),         % optional
 %%                 intensity => non_neg_integer(), % optional
 %%                 period => pos_integer()}        % optional

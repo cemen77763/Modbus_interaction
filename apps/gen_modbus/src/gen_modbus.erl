@@ -53,6 +53,7 @@
 %%% -----------------------------------------------------------------------------------------
 %%% API
 %%% -----------------------------------------------------------------------------------------
+
 -callback init(Args :: term()) ->
     {ok, Command :: cmd(), State :: term()} | {ok, Command :: cmd(), State :: term(), timeout() | hibernate | {continue, term()}} |
     {stop, Command :: cmd(), Reason :: term()} | ignore.
@@ -84,7 +85,7 @@
     {ok, Command :: cmd(), NewState :: term()} | 
     {stop, Reason :: term(), Command :: cmd(), NewState :: term()}.
 
--callback disconnect(Reason :: term(), State :: term()) ->
+-callback disconnect(Reason :: econnrefused | normal | socket_closed | shutdown | term(), State :: term()) ->
     {ok, Command :: cmd(), NewState :: term()} | 
     {stop, Reason :: term(), Command :: cmd(), NewState :: term()}.
 
@@ -128,165 +129,163 @@ init([Mod, Args]) ->
         Mod:init(Args)
     catch 
         throw:R -> {ok, R};
-        C:R:S -> {'EXIT', C, R, S}
+        C:R:Stacktrace -> {'EXIT', C, R, Stacktrace}
     end,
     case Res of
-        {ok, Command, State} ->  
-            {ok, cmd(Command, #state{mod = Mod, state = State})};
-        {ok, Command, State, Timeout} ->    
-            {ok, cmd(Command, #state{mod = Mod, state = State}), Timeout};
+        {ok, Command, S} ->  
+            {ok, cmd(Command, #state{mod = Mod, state = S})};
+        {ok, Command, S, Timeout} ->    
+            {ok, cmd(Command, #state{mod = Mod, state = S}), Timeout};
         {stop, Command, Reason} ->
             cmd(Command, #state{mod = Mod}),
             {stop, Reason};
         ignore ->
             ignore;
-        Else ->
-            Else;
-        {'EXIT', Class, Reason, Stacktrace} ->
-            erlang:raise(Class, Reason, Stacktrace)
+        {'EXIT', Class, Reason, Strace} ->
+            erlang:raise(Class, Reason, Strace)
     end.
 
-handle_continue(Info, State) ->
-    Mod = State#state.mod,
+handle_continue(Info, S) ->
+    Mod = S#state.mod,
     Res =
     try
-        Mod:handle_continue(Info, State#state.state)
+        Mod:handle_continue(Info, S#state.state)
     catch 
         throw:R -> {ok, R};
-        C:R:S -> {'EXIT', C, R, S}
+        C:R:Stacktrace -> {'EXIT', C, R, Stacktrace}
     end,
     case Res of
-        {noreply, Command, NewState} ->
-            {noreply, cmd(Command, State#state{state = NewState})};
-        {noreply, Command, NewState, Timeout} ->
-            {noreply, cmd(Command, State#state{state = NewState}), Timeout};
-        {stop, Reason, Command, NewState} ->
-            {stop, Reason, cmd(Command, State#state{state = NewState})};          
-        {'EXIT', Class, Reason, Stacktrace} ->
-            erlang:raise(Class, Reason, Stacktrace)          
+        {noreply, Command, S2} ->
+            {noreply, cmd(Command, S#state{state = S2})};
+        {noreply, Command, S2, Timeout} ->
+            {noreply, cmd(Command, S#state{state = S2}), Timeout};
+        {stop, Reason, Command, S2} ->
+            {stop, Reason, cmd(Command, S#state{state = S2})};          
+        {'EXIT', Class, Reason, Strace} ->
+            erlang:raise(Class, Reason, Strace)          
     end.
 
-handle_call(Request, From, State) ->
-    Mod = State#state.mod,
+handle_call(Request, From, S) ->
+    Mod = S#state.mod,
     Res =
     try
-        Mod:handle_call(Request, From, State#state.state)
+        Mod:handle_call(Request, From, S#state.state)
     catch 
         throw:R -> {ok, R};
-        C:R:S -> {'EXIT', C, R, S}
+        C:R:Stacktrace -> {'EXIT', C, R, Stacktrace}
     end,
     case Res of
-        {reply, Reply, Command, NewState} ->
-            {reply, Reply, cmd(Command, State#state{state = NewState})};
+        {reply, Reply, Command, S2} ->
+            {reply, Reply, cmd(Command, S#state{state = S2})};
 
-        {reply, Reply, Command, NewState, Timeout} ->
-            {reply, Reply, cmd(Command, State#state{state = NewState}), Timeout};
+        {reply, Reply, Command, S2, Timeout} ->
+            {reply, Reply, cmd(Command, S#state{state = S2}), Timeout};
 
-        {noreply, Command, NewState} ->
-            {noreply, cmd(Command, State#state{state = NewState})};
+        {noreply, Command, S2} ->
+            {noreply, cmd(Command, S#state{state = S2})};
 
-        {noreply, Command, NewState, Timeout} ->
-            {noreply, cmd(Command, State#state{state = NewState}), Timeout};
+        {noreply, Command, S2, Timeout} ->
+            {noreply, cmd(Command, S#state{state = S2}), Timeout};
 
-        {stop, Reason, Reply, Command, NewState} ->
-            {stop, Reason, Reply, cmd(Command, State#state{state = NewState})};
+        {stop, Reason, Reply, Command, S2} ->
+            {stop, Reason, Reply, cmd(Command, S#state{state = S2})};
 
-        {stop, Reason, Command, NewState} ->
-            {stop, Reason, cmd(Command, State#state{state = NewState})};
+        {stop, Reason, Command, S2} ->
+            {stop, Reason, cmd(Command, S#state{state = S2})};
 
-        {'EXIT', Class, Reason, Stacktrace} ->
-            erlang:raise(Class, Reason, Stacktrace)           
+        {'EXIT', Class, Reason, Strace} ->
+            erlang:raise(Class, Reason, Strace)           
     end.
 
-handle_cast(Msg, State) ->
-    Mod = State#state.mod,
+handle_cast(Msg, S) ->
+    Mod = S#state.mod,
     Res =
     try
-        Mod:handle_cast(Msg, State#state.state)
+        Mod:handle_cast(Msg, S#state.state)
     catch 
         throw:R -> {ok, R};
-        C:R:S -> {'EXIT', C, R, S}
+        C:R:Stacktrace -> {'EXIT', C, R, Stacktrace}
     end,
     case Res of
-        {noreply, Command, NewState} ->
-            {noreply, cmd(Command, State#state{state = NewState})};
+        {noreply, Command, S2} ->
+            {noreply, cmd(Command, S#state{state = S2})};
 
-        {noreply, Command, NewState, Timeout} ->
-            {noreply, cmd(Command, State#state{state = NewState}), Timeout};
+        {noreply, Command, S2, Timeout} ->
+            {noreply, cmd(Command, S#state{state = S2}), Timeout};
 
-        {stop, Reason, Command, NewState} ->
-            {stop, Reason, cmd(Command, State#state{state = NewState})};
+        {stop, Reason, Command, S2} ->
+            {stop, Reason, cmd(Command, S#state{state = S2})};
 
-        {'EXIT', Class, Reason, Stacktrace} ->
-            erlang:raise(Class, Reason, Stacktrace)     
+        {'EXIT', Class, Reason, Strace} ->
+            erlang:raise(Class, Reason, Strace)     
     end.
 
-handle_info({tcp_closed, Socket}, State) ->
-    Mod = State#state.mod,
-    Socket = State#state.socket_info#socket_info.socket,
+handle_info({tcp_closed, #state{socket_info = #socket_info{socket = Socket}} = S}, S) ->
+    Mod = S#state.mod,
+    Socket = S#state.socket_info#socket_info.socket,
     gen_tcp:close(Socket),
     Res = 
     try
-        Mod:disconnect(connection_closed, State#state.state)
+        Mod:disconnect(connection_closed, S#state.state)
     catch 
             throw:R -> {ok, R};
-            C:R:S -> {'EXIT', C, R, S}
+            C:R:Stacktrace -> {'EXIT', C, R, Stacktrace}
     end,
     case Res of
-        {ok, Command, NewState} ->
-            {noreply, cmd(Command, State#state{state = NewState})};            
-        {stop, Reason, Command, NewState} ->
-            {stop, Reason, cmd(Command, State#state{state = NewState})};
-        {'EXIT', Class, Reason, Stacktrace} ->
-            erlang:raise(Class, Reason, Stacktrace)
+        {ok, Command, S2} ->
+            {noreply, cmd(Command, S#state{state = S2})};            
+        {stop, Reason, Command, S2} ->
+            {stop, Reason, cmd(Command, S#state{state = S2})};
+        {'EXIT', Class, Reason, Strace} ->
+            erlang:raise(Class, Reason, Strace)
     end;
 
-handle_info(Info, State) ->
-    Mod = State#state.mod,
+handle_info(Info, S) ->
+    Mod = S#state.mod,
     Res =
     try
-        Mod:handle_info(Info, State#state.state)
+        Mod:handle_info(Info, S#state.state)
     catch 
         throw:R -> {ok, R};
-        C:R:S -> {'EXIT', C, R, S}
+        C:R:Stacktrace -> {'EXIT', C, R, Stacktrace}
     end,
     case Res of
-        {noreply, Command, NewState} ->
-            {noreply, cmd(Command, State#state{state = NewState})};
+        {noreply, Command, S2} ->
+            {noreply, cmd(Command, S#state{state = S2})};
 
-        {noreply, Command, NewState, Timeout} ->
-            {noreply, cmd(Command, State#state{state = NewState}), Timeout};
+        {noreply, Command, S2, Timeout} ->
+            {noreply, cmd(Command, S#state{state = S2}), Timeout};
 
-        {stop, Reason, Command, NewState} ->
-            {stop, Reason, cmd(Command, State#state{state = NewState})};
+        {stop, Reason, Command, S2} ->
+            {stop, Reason, cmd(Command, S#state{state = S2})};
 
-        {'EXIT', Class, Reason, Stacktrace} ->
-            erlang:raise(Class, Reason, Stacktrace)          
+        {'EXIT', Class, Reason, Strace} ->
+            erlang:raise(Class, Reason, Strace)          
     end.
 
-terminate(Reason, State) ->
-    Mod = State#state.mod,
-    Socket = State#state.socket_info#socket_info.socket,
+terminate(Reason, S) ->
+    Mod = S#state.mod,
+    Socket = S#state.socket_info#socket_info.socket,
     case Socket of
-         0 -> ok;
-         _ -> gen_tcp:close(State#state.socket_info#socket_info.socket)
+        0 -> ok;
+        _ -> gen_tcp:close(S#state.socket_info#socket_info.socket)
     end,
     case erlang:function_exported(Mod, terminate, 2) of
-	true ->
-	    try
-		    Mod:terminate(Reason, State#state.state)  
-        catch
-		    throw:R ->
-                {ok, R};
-		    Class:R:Stacktrace ->
-                {'EXIT', Class, R, Stacktrace}
-        end;
-	false ->
-        ok
+        true ->
+            try
+                Mod:terminate(Reason, S#state.state)  
+            catch
+                throw:R ->
+                    {ok, R};
+                C:R:Stacktrace ->
+                    {'EXIT', C, R, Stacktrace}
+            end;
+        false ->
+            ok
     end.
 
-code_change(_OldVsn, State, _Extra) ->
-    {ok, State}.
+code_change(_OldVsn, S, _Extra) ->
+    {ok, S}.
 
 cmd([#connect{ip_addr = Ip_addr, port = Port} | T], S) ->
     Mod = S#state.mod,
@@ -296,49 +295,34 @@ cmd([#connect{ip_addr = Ip_addr, port = Port} | T], S) ->
     end,
     case {_, Socket} = gen_tcp:connect(Ip_addr, Port, S#state.socket_opts) of
         {ok, _} ->
-            S1 = S#state{socket_info = #socket_info{
+            S2 = S#state{socket_info = #socket_info{
                 socket = Socket,
                 ip_addr = Ip_addr,
                 port = Port,
                 connection = connect}},
-            Res =             
+            Res =
             try
-                Mod:connect(S1#state.socket_info, S1#state.state)
+                Mod:connect(S2#state.socket_info, S2#state.state)
             catch 
                 throw:R -> {ok, R};
-                C:R:S -> {'EXIT', C, R, S}
+                C:R:Stacktrace -> {'EXIT', C, R, Stacktrace}
             end,
             case Res of
-                {ok, Command, NewState} ->
-                    cmd(T ++ Command, S1#state{state = NewState});              
-                {stop, Reason, Command, NewState} ->
-                    cmd(T ++ Command, S1#state{state = NewState}),
+                {ok, Command, S3} ->
+                    cmd(T ++ Command, S2#state{state = S3});              
+                {stop, Reason, Command, S3} ->
+                    cmd(T ++ Command, S2#state{state = S3}),
                     gen_server:stop(self(), Reason, infinity);
-                {'EXIT', Class, Reason, Stacktrace} ->
-                    erlang:raise(Class, Reason, Stacktrace)
+                {'EXIT', Class, Reason, Strace} ->
+                    erlang:raise(Class, Reason, Strace)
             end;
         {error, Reason} ->
-            S1 = S#state{socket_info = #socket_info{socket = 0, connection = close}},
-            Res = 
-            try
-                Mod:disconnect(Reason, S1#state.state)
-            catch 
-                throw:R -> {ok, R};
-                C:R:S -> {'EXIT', C, R, S}
-            end,
-            case Res of
-                {ok, Command, NewState} ->
-                    cmd(T ++ Command, S1#state{state = NewState});             
-                {stop, Reason, Command, NewState} ->
-                    cmd(T ++ Command, S1#state{state = NewState}),
-                    gen_server:stop(self(), Reason, infinity);
-                {'EXIT', Class, Reason, Stacktrace} ->
-                    erlang:raise(Class, Reason, Stacktrace)
-            end
+            S2 = S#state{socket_info = #socket_info{socket = 0, connection = close}},
+            disconnect_cmd(S2#state.mod, Reason, T, S2)
     end;
 
 cmd([#change_sock_opts{active = Active, reuseaddr = Reuseaddr, nodelay = Nodelay, ifaddr = Ifaddr} | T], S) ->
-    S1 = S#state{socket_opts = [
+    S2 = S#state{socket_opts = [
         Ifaddr,
         binary,
         {packet, raw},
@@ -346,518 +330,334 @@ cmd([#change_sock_opts{active = Active, reuseaddr = Reuseaddr, nodelay = Nodelay
         {reuseaddr, Reuseaddr},
         {nodelay, Nodelay}
         ]},
-    Socket = S1#state.socket_info#socket_info.socket,
+    Socket = S2#state.socket_info#socket_info.socket,
     case Socket of
         0 -> ok;
-        _ -> inet:setopts(Socket, S1#state.socket_opts)
+        _ -> inet:setopts(Socket, S2#state.socket_opts)
     end,
-    cmd(T, S1);
+    cmd(T, S2);
 
 cmd([#disconnect{reason = Reason} | T], S) ->
-    Mod = S#state.mod,
     Socket = S#state.socket_info#socket_info.socket,
     case Socket of 
         0 -> ok;
         _ -> gen_tcp:close(Socket)
     end,
-    S1 = S#state{socket_info = #socket_info{socket = 0, connection = close}},
-    Res = 
-    try
-        Mod:disconnect(Reason, S1#state.state)
-    catch 
-        throw:R -> {ok, R};
-        C:R:S -> {'EXIT', C, R, S}
-    end,
-    case Res of
-        {ok, Command, NewState} ->
-            cmd(T ++ Command, S1#state{state = NewState});              
-        {stop, Reason, Command, NewState} ->
-            cmd(T ++ Command, S1#state{state = NewState}), 
-            gen_server:stop(self(), Reason, infinity);
-        {'EXIT', Class, Reason, Stacktrace} ->
-            erlang:raise(Class, Reason, Stacktrace)
-    end;
+    S2 = S#state{socket_info = #socket_info{socket = 0, connection = close}},
+    disconnect_cmd(S2#state.mod, Reason, T, S2);
+
+cmd([#read_holding_registers{} | T], #state{socket_info = #socket_info{socket = 0}} = S) ->
+    disconnect_cmd(S#state.mod, socket_closed, T, S);
 
 cmd([#read_holding_registers{device_number = Dev_num, register_number = Reg_num, quantity = Quantity} | T], S) ->
     Packet = <<1:16, 0:16, 6:16, Dev_num:8, ?FUN_CODE_READ_HREGS:8, Reg_num:16, Quantity:16>>,
     Socket = S#state.socket_info#socket_info.socket,
     Mod = S#state.mod,
-    if Socket =/= 0 ->
-        % Modbus код функции 03 (чтение Holding reg)
-        case gen_tcp:send(Socket, Packet) of
-            ok ->
-                case gen_tcp:recv(Socket, 0, 1000) of
-                    {ok, Data} -> 
-                        case Data of
-                            <<1:16, 0:16, _:16, Dev_num:8, ?FUN_CODE_READ_HREGS:8, _:8, BinData/binary>> ->
-                                LData = bin_to_list16(BinData, []),
-                                Res =
-                                try
-                                    Mod:message(#read_holding_registers{
-                                        device_number = Dev_num,
-                                        register_number = Reg_num,
-                                        quantity = Quantity,
-                                        registers_value = LData
-                                        }, S#state.state)     
-                                catch 
-                                    throw:R -> {ok, R};
-                                    C:R:S -> {'EXIT', C, R, S}
-                                end,
-                                case Res of
-                                    {ok, Command, NewState} ->
-                                        cmd(T ++ Command, S#state{state = NewState});              
-                                    {stop, Reason, Command, NewState} ->
-                                        cmd(T ++ Command, S#state{state = NewState}), 
-                                        gen_server:stop(self(), Reason, infinity);
-                                    {'EXIT', Class, Reason, Stacktrace} ->
-                                        erlang:raise(Class, Reason, Stacktrace)
-                                end;
-                            <<1:16, 0:16, 3:16, Dev_num:8, ?ERR_CODE_READ_HREGS:8, Err_code:8>> ->
-                                decryption_error_code:decrypt(Err_code),
-                                cmd(T, S);
-                            _Else ->
-                                cmd(T, S)
-                        end;
-                    {error, Reason} ->
-                        Res = 
-                        try
-                            Mod:message({error, Reason}, S#state.state)
-                        catch 
-                            throw:R -> {ok, R};
-                            C:R:S -> {'EXIT', C, R, S}
-                        end,
-                        case Res of
-                            {ok, Command, NewState} ->
-                                cmd(T ++ Command, S#state{state = NewState});              
-                            {stop, Reason, Command, NewState} ->
-                                cmd(T ++ Command, S#state{state = NewState}), 
-                                gen_server:stop(self(), Reason, infinity);
-                            {'EXIT', Class, Reason, Stacktrace} ->
-                                erlang:raise(Class, Reason, Stacktrace)
-                        end
-                end;
-            {error, Reason} ->
-                gen_tcp:close(Socket),
-                S1 = S#state{socket_info = #socket_info{socket = 0, connection = close}},
-                Res = 
+    % Modbus код функции 03 (чтение Holding reg)
+    case gen_tcp:send(Socket, Packet) of
+        ok ->
+        case gen_tcp:recv(Socket, 0, 1000) of
+            {ok, <<1:16, 0:16, _:16, Dev_num:8, ?FUN_CODE_READ_HREGS:8, _:8, BinData/binary>>} -> 
+                LData = bin_to_list16(BinData, []),
+                Res =
                 try
-                    Mod:disconnect(Reason, S1#state.state)
+                    Mod:message(#read_holding_registers{device_number = Dev_num,
+                    register_number = Reg_num,
+                    quantity = Quantity,
+                    registers_value = LData
+                    }, S#state.state)     
                 catch 
                     throw:R -> {ok, R};
-                    C:R:S -> {'EXIT', C, R, S}
+                    C:R:Stacktrace -> {'EXIT', C, R, Stacktrace}
                 end,
                 case Res of
-                    {ok, Command, NewState} ->
-                        cmd(T ++ Command, S1#state{state = NewState});              
-                    {stop, Reason, Command, NewState} ->
-                        cmd(T ++ Command, S1#state{state = NewState}), 
+                    {ok, Command, S2} ->
+                        cmd(T ++ Command, S#state{state = S2});              
+                    {stop, Reason, Command, S2} ->
+                        cmd(T ++ Command, S#state{state = S2}), 
                         gen_server:stop(self(), Reason, infinity);
-                    {'EXIT', Class, Reason, Stacktrace} ->
-                        erlang:raise(Class, Reason, Stacktrace)
+                    {'EXIT', Class, Reason, Strace} ->
+                            erlang:raise(Class, Reason, Strace)
+                end;
+            {ok, <<1:16, 0:16, 3:16, Dev_num:8, ?ERR_CODE_READ_HREGS:8, Err_code:8>>} ->
+                decryption_error_code:decrypt(Err_code),
+                cmd(T, S);
+            {ok, _Else} ->
+                cmd(T, S);
+            {error, Reason} ->
+                Res = 
+                try
+                    Mod:message({error, Reason}, S#state.state)
+                catch 
+                    throw:R -> {ok, R};
+                    C:R:Stacktrace -> {'EXIT', C, R, Stacktrace}
+                end,
+                case Res of
+                    {ok, Command, S2} ->
+                        cmd(T ++ Command, S#state{state = S2});              
+                    {stop, Reason, Command, S2} ->
+                        cmd(T ++ Command, S#state{state = S2}), 
+                        gen_server:stop(self(), Reason, infinity);
+                    {'EXIT', Class, Reason, Strace} ->
+                        erlang:raise(Class, Reason, Strace)
                 end
         end;
-        true ->
-            Res = 
-            try
-                Mod:disconnect(socket_closed, S#state.state)        
-            catch 
-                throw:R -> {ok, R};
-                C:R:S -> {'EXIT', C, R, S}
-            end,
-            case Res of
-                {ok, Command, NewState} ->
-                    cmd(T ++ Command, S#state{state = NewState});              
-                {stop, Reason, Command, NewState} ->
-                    cmd(T ++ Command, S#state{state = NewState}), 
-                    gen_server:stop(self(), Reason, infinity);
-                {'EXIT', Class, Reason, Stacktrace} ->
-                    erlang:raise(Class, Reason, Stacktrace)
-            end
-    end; 
+        {error, Reason} ->
+            gen_tcp:close(Socket),
+            S2 = S#state{socket_info = #socket_info{socket = 0, connection = close}},
+            disconnect_cmd(S2#state.mod, Reason, T, S2)
+    end;
+
+cmd([#read_input_registers{} | T], #state{socket_info = #socket_info{socket = 0}} = S) ->
+    disconnect_cmd(S#state.mod, socket_closed, T, S);
 
 cmd([#read_input_registers{device_number = Dev_num, register_number = Reg_num, quantity = Quantity} | T], S) ->
     Packet = <<1:16, 0:16, 6:16, Dev_num:8, ?FUN_CODE_READ_IREGS:8, Reg_num:16, 1:16>>,
     Socket = S#state.socket_info#socket_info.socket,
     Mod = S#state.mod,
-    if Socket =/= 0 ->
-        % Modbus код функции 04 (чтение Input reg)
-        case gen_tcp:send(Socket, Packet) of
-            ok ->
-                case gen_tcp:recv(Socket, 0, 1000) of
-                    {ok, Data} -> 
-                        case Data of
-                            <<1:16, 0:16, 4:16, Dev_num:8, ?FUN_CODE_READ_IREGS:8, _:8, BinData/binary>> ->
-                                LData = bin_to_list16(BinData, []),
-                                Res =
-                                try
-                                    Mod:message(#read_input_registers{
-                                        device_number = Dev_num,
-                                        register_number = Reg_num,
-                                        quantity = Quantity,
-                                        registers_value = LData
-                                        }, S#state.state)     
-                                catch 
-                                    throw:R -> {ok, R};
-                                    C:R:S -> {'EXIT', C, R, S}
-                                end,
-                                case Res of
-                                    {ok, Command, NewState} ->
-                                        cmd(T ++ Command, S#state{state = NewState});              
-                                    {stop, Reason, Command, NewState} ->
-                                        cmd(T ++ Command, S#state{state = NewState}), 
-                                        gen_server:stop(self(), Reason, infinity);
-                                    {'EXIT', Class, Reason, Stacktrace} ->
-                                        erlang:raise(Class, Reason, Stacktrace)
-                                end;
-                            <<1:16, 0:16, 3:16, _Device_num:8, ?ERR_CODE_READ_IREGS:8, Err_code:8>> ->
-                                decryption_error_code:decrypt(Err_code),
-                                cmd(T, S);
-                            _Else ->
-                                cmd(T, S)
-                        end;
-                    {error, Reason} ->
-                        Res = 
-                        try
-                            Mod:message({error, Reason}, S#state.state) 
-                        catch 
-                            throw:R -> {ok, R};
-                            C:R:S -> {'EXIT', C, R, S}
-                        end,
-                        case Res of
-                            {ok, Command, NewState} ->
-                                cmd(T ++ Command, S#state{state = NewState});              
-                            {stop, Reason, Command, NewState} ->
-                                cmd(T ++ Command, S#state{state = NewState}), 
-                                gen_server:stop(self(), Reason, infinity);
-                            {'EXIT', Class, Reason, Stacktrace} ->
-                                erlang:raise(Class, Reason, Stacktrace)
-                        end
-                end;
-            {error, Reason} ->
-                gen_tcp:close(Socket),
-                S1 = S#state{socket_info = #socket_info{socket = 0, connection = close}},
-                Res = 
-                try
-                    Mod:disconnect(Reason, S1#state.state)
-                catch 
-                    throw:R -> {ok, R};
-                    C:R:S -> {'EXIT', C, R, S}
-                end,
-                case Res of
-                    {ok, Command, NewState} ->
-                        cmd(T ++ Command, S1#state{state = NewState});              
-                    {stop, Reason, Command, NewState} ->
-                        cmd(T ++ Command, S1#state{state = NewState}), 
-                        gen_server:stop(self(), Reason, infinity);
-                    {'EXIT', Class, Reason, Stacktrace} ->
-                        erlang:raise(Class, Reason, Stacktrace)
-                end
-        end;
-        true ->
-            Res = 
-            try
-                Mod:disconnect(socket_closed, S#state.state)       
-            catch 
-                throw:R -> {ok, R};
-                C:R:S -> {'EXIT', C, R, S}
-            end,
-            case Res of
-                {ok, Command, NewState} ->
-                    cmd(T ++ Command, S#state{state = NewState});              
-                {stop, Reason, Command, NewState} ->
-                    cmd(T ++ Command, S#state{state = NewState}), 
-                    gen_server:stop(self(), Reason, infinity);
-                {'EXIT', Class, Reason, Stacktrace} ->
-                    erlang:raise(Class, Reason, Stacktrace)
-            end
-end;
+    % Modbus код функции 04 (чтение Input reg)
+    case gen_tcp:send(Socket, Packet) of
+        ok ->
+            case gen_tcp:recv(Socket, 0, 1000) of
+                {ok, <<1:16, 0:16, 5:16, Dev_num:8, ?FUN_CODE_READ_IREGS:8, _:8, BinData/binary>>} -> 
+                    LData = bin_to_list16(BinData, []),
+                    Res =
+                    try
+                        Mod:message(#read_input_registers{
+                            device_number = Dev_num,
+                            register_number = Reg_num,
+                            quantity = Quantity,
+                            registers_value = LData
+                            }, S#state.state)     
+                    catch 
+                        throw:R -> {ok, R};
+                        C:R:Stacktrace -> {'EXIT', C, R, Stacktrace}
+                    end,
+                    case Res of
+                        {ok, Command, S2} ->
+                            cmd(T ++ Command, S#state{state = S2});              
+                        {stop, Reason, Command, S2} ->
+                            cmd(T ++ Command, S#state{state = S2}), 
+                            gen_server:stop(self(), Reason, infinity);
+                        {'EXIT', Class, Reason, Strace} ->
+                            erlang:raise(Class, Reason, Strace)
+                    end;
+                {ok, <<1:16, 0:16, 3:16, Dev_num:8, ?ERR_CODE_READ_IREGS:8, Err_code:8>>} ->
+                    decryption_error_code:decrypt(Err_code),
+                    cmd(T, S);
+                {ok, _Else} ->
+                    cmd(T, S);
+                {error, Reason} ->
+                    Res = 
+                    try
+                        Mod:message({error, Reason}, S#state.state) 
+                    catch 
+                        throw:R -> {ok, R};
+                        C:R:Stacktrace -> {'EXIT', C, R, Stacktrace}
+                    end,
+                    case Res of
+                        {ok, Command, S2} ->
+                            cmd(T ++ Command, S#state{state = S2});              
+                        {stop, Reason, Command, S2} ->
+                            cmd(T ++ Command, S#state{state = S2}), 
+                            gen_server:stop(self(), Reason, infinity);
+                        {'EXIT', Class, Reason, Strace} ->
+                            erlang:raise(Class, Reason, Strace)
+                    end
+            end;
+        {error, Reason} ->
+            gen_tcp:close(Socket),
+            S2 = S#state{socket_info = #socket_info{socket = 0, connection = close}},
+            disconnect_cmd(S2#state.mod, Reason, T, S2)
+    end;
+
+cmd([#read_coils_status{} | T], #state{socket_info = #socket_info{socket = 0}} = S) ->
+    disconnect_cmd(S#state.mod, socket_closed, T, S);    
 
 cmd([#read_coils_status{device_number = Dev_num, register_number = Reg_num, quantity = Quantity} | T], S) ->
     Packet = <<1:16, 0:16, 6:16, Dev_num:8, ?FUN_CODE_READ_COILS:8, Reg_num:16, Quantity:16>>,
     Socket = S#state.socket_info#socket_info.socket,
     Mod = S#state.mod,
-    if Socket =/= 0 ->
-        % Modbus код функции 01 (чтение Coils status)
-        case gen_tcp:send(Socket, Packet) of
-            ok ->
-                case gen_tcp:recv(Socket, 0, 1000) of
-                    {ok, Data} -> 
-                        case Data of
-                            <<1:16, 0:16, 4:16, Dev_num:8, ?FUN_CODE_READ_COILS:8, Data/binary>> ->
-                                Res =
-                                try
-                                    Mod:message(#read_coils_status{
-                                        device_number = Dev_num,
-                                        register_number = Reg_num,
-                                        quantity = Quantity,
-                                        registers_value = Data
-                                        }, S#state.state)      
-                                catch 
-                                    throw:R -> {ok, R};
-                                    C:R:S -> {'EXIT', C, R, S}
-                                end,
-                                case Res of
-                                    {ok, Command, NewState} ->
-                                        cmd(T ++ Command, S#state{state = NewState});              
-                                    {stop, Reason, Command, NewState} ->
-                                        cmd(T ++ Command, S#state{state = NewState}), 
-                                        gen_server:stop(self(), Reason, infinity);
-                                    {'EXIT', Class, Reason, Stacktrace} ->
-                                        erlang:raise(Class, Reason, Stacktrace)
-                                end;
-                            <<1:16, 0:16, 3:16, Dev_num:8, ?ERR_CODE_READ_COILS:8, Err_code:8>> ->
-                                decryption_error_code:decrypt(Err_code),
-                                cmd(T, S);
-                            _Else ->
-                                cmd(T, S)
-                        end;
-                    {error, Reason} ->
-                        Res = 
-                        try
-                            Mod:message({error, Reason}, S#state.state)
-                        catch 
-                            throw:R -> {ok, R};
-                            C:R:S -> {'EXIT', C, R, S}
-                        end,
-                        case Res of
-                            {ok, Command, NewState} ->
-                                cmd(T ++ Command, S#state{state = NewState});              
-                            {stop, Reason, Command, NewState} ->
-                                cmd(T ++ Command, S#state{state = NewState}), 
-                                gen_server:stop(self(), Reason, infinity);
-                            {'EXIT', Class, Reason, Stacktrace} ->
-                                erlang:raise(Class, Reason, Stacktrace)
-                        end
-                end;
-            {error, Reason} ->
-                gen_tcp:close(Socket),
-                S1 = S#state{socket_info = #socket_info{socket = 0, connection = close}},
-                Res = 
-                try
-                    Mod:disconnect(Reason, S1#state.state)
-                catch 
-                    throw:R -> {ok, R};
-                    C:R:S -> {'EXIT', C, R, S}
-                end,
-                case Res of
-                    {ok, Command, NewState} ->
-                        cmd(T ++ Command, S1#state{state = NewState});              
-                    {stop, Reason, Command, NewState} ->
-                        cmd(T ++ Command, S1#state{state = NewState}), 
-                        gen_server:stop(self(), Reason, infinity);
-                    {'EXIT', Class, Reason, Stacktrace} ->
-                        erlang:raise(Class, Reason, Stacktrace)
-                end
-        end;
-        true ->
-            Res = 
-            try
-                Mod:disconnect(socket_closed, S#state.state)       
-            catch 
-                throw:R -> {ok, R};
-                C:R:S -> {'EXIT', C, R, S}
-            end,
-            case Res of
-                {ok, Command, NewState} ->
-                    cmd(T ++ Command, S#state{state = NewState});              
-                {stop, Reason, Command, NewState} ->
-                    cmd(T ++ Command, S#state{state = NewState}), 
-                    gen_server:stop(self(), Reason, infinity);
-                {'EXIT', Class, Reason, Stacktrace} ->
-                    erlang:raise(Class, Reason, Stacktrace)
-            end
+    % Modbus код функции 01 (чтение Coils status)
+    case gen_tcp:send(Socket, Packet) of
+        ok ->
+            case gen_tcp:recv(Socket, 0, 1000) of
+                {ok, <<1:16, 0:16, 4:16, Dev_num:8, ?FUN_CODE_READ_COILS:8, Bdata/binary>>} -> 
+                    Res =
+                    try
+                        Mod:message(#read_coils_status{
+                            device_number = Dev_num,
+                            register_number = Reg_num,
+                            quantity = Quantity,
+                            registers_value = Bdata
+                            }, S#state.state)      
+                    catch 
+                        throw:R -> {ok, R};
+                        C:R:Stacktrace -> {'EXIT', C, R, Stacktrace}
+                    end,
+                    case Res of
+                        {ok, Command, S2} ->
+                            cmd(T ++ Command, S#state{state = S2});              
+                        {stop, Reason, Command, S2} ->
+                            cmd(T ++ Command, S#state{state = S2}), 
+                            gen_server:stop(self(), Reason, infinity);
+                        {'EXIT', Class, Reason, Strace} ->
+                            erlang:raise(Class, Reason, Strace)
+                    end;
+                {ok, <<1:16, 0:16, 3:16, Dev_num:8, ?ERR_CODE_READ_COILS:8, Err_code:8>>} ->
+                    decryption_error_code:decrypt(Err_code),
+                    cmd(T, S);
+                {ok, _Else} ->
+                    cmd(T, S);
+                {error, Reason} ->
+                    Res = 
+                    try
+                        Mod:message({error, Reason}, S#state.state)
+                    catch 
+                        throw:R -> {ok, R};
+                        C:R:Stacktrace -> {'EXIT', C, R, Stacktrace}
+                    end,
+                    case Res of
+                        {ok, Command, S2} ->
+                            cmd(T ++ Command, S#state{state = S2});              
+                        {stop, Reason, Command, S2} ->
+                            cmd(T ++ Command, S#state{state = S2}), 
+                            gen_server:stop(self(), Reason, infinity);
+                        {'EXIT', Class, Reason, Strace} ->
+                            erlang:raise(Class, Reason, Strace)
+                    end
+            end;
+        {error, Reason} ->
+            gen_tcp:close(Socket),
+            S2 = S#state{socket_info = #socket_info{socket = 0, connection = close}},
+            disconnect_cmd(S2#state.mod, Reason, T, S2)
     end;
+
+cmd([#read_inputs_status{} | T], #state{socket_info = #socket_info{socket = 0}} = S) ->
+    disconnect_cmd(S#state.mod, socket_closed, T, S);    
 
 cmd([#read_inputs_status{device_number = Dev_num, register_number = Reg_num, quantity = Quantity} | T], S) ->
     Packet = <<1:16, 0:16, 6:16, Dev_num:8, ?FUN_CODE_READ_INPUTS:8, Reg_num:16, Quantity:16>>,
     Socket = S#state.socket_info#socket_info.socket,
     Mod = S#state.mod,
-    if Socket =/= 0 ->
-        % Modbus код функции 02 (чтение Inputs status)
-        case gen_tcp:send(Socket, Packet) of
-            ok ->
-                case gen_tcp:recv(Socket, 0, 1000) of
-                    {ok, Data} -> 
-                        case Data of
-                            <<1:16, 0:16, 3:16, Dev_num:8, ?FUN_CODE_READ_INPUTS:8, Data/binary>> ->
-                                Res =
-                                try
-                                    Mod:message(#read_inputs_status{
-                                        device_number = Dev_num,
-                                        register_number = Reg_num,
-                                        quantity = Quantity,
-                                        registers_value = Data
-                                        }, S#state.state)      
-                                catch 
-                                    throw:R -> {ok, R};
-                                    C:R:S -> {'EXIT', C, R, S}
-                                end,
-                                case Res of
-                                    {ok, Command, NewState} ->
-                                        cmd(T ++ Command, S#state{state = NewState});              
-                                    {stop, Reason, Command, NewState} ->
-                                        cmd(T ++ Command, S#state{state = NewState}), 
-                                        gen_server:stop(self(), Reason, infinity);
-                                    {'EXIT', Class, Reason, Stacktrace} ->
-                                        erlang:raise(Class, Reason, Stacktrace)
-                                end;
-                            <<1:16, 0:16, 3:16, Dev_num:8, ?ERR_CODE_READ_INPUTS:8, Err_code:8>> ->
-                                decryption_error_code:decrypt(Err_code),
-                                cmd(T, S);
-                            _Else ->
-                                cmd(T, S)
-                        end;
-                    {error, Reason} ->
-                        Res = 
-                        try
-                            Mod:message({error, Reason}, S#state.state)
-                        catch 
-                            throw:R -> {ok, R};
-                            C:R:S -> {'EXIT', C, R, S}
-                        end,
-                        case Res of
-                            {ok, Command, NewState} ->
-                                cmd(T ++ Command, S#state{state = NewState});              
-                            {stop, Reason, Command, NewState} ->
-                                cmd(T ++ Command, S#state{state = NewState}), 
-                                gen_server:stop(self(), Reason, infinity);
-                            {'EXIT', Class, Reason, Stacktrace} ->
-                                erlang:raise(Class, Reason, Stacktrace)
-                        end
-                end;
-            {error, Reason} ->
-                gen_tcp:close(Socket),
-                S1 = S#state{socket_info = #socket_info{socket = 0, connection = close}},
-                Res = 
-                try
-                    Mod:disconnect(Reason, S1#state.state)
-                catch 
-                    throw:R -> {ok, R};
-                    C:R:S -> {'EXIT', C, R, S}
-                end,
-                case Res of
-                    {ok, Command, NewState} ->
-                        cmd(T ++ Command, S1#state{state = NewState});              
-                    {stop, Reason, Command, NewState} ->
-                        cmd(T ++ Command, S1#state{state = NewState}), 
-                        gen_server:stop(self(), Reason, infinity);
-                    {'EXIT', Class, Reason, Stacktrace} ->
-                        erlang:raise(Class, Reason, Stacktrace)
-                end
-        end;
-        true ->
-            Res = 
-            try
-                Mod:disconnect(socket_closed, S#state.state)       
-            catch 
-                throw:R -> {ok, R};
-                C:R:S -> {'EXIT', C, R, S}
-            end,
-            case Res of
-                {ok, Command, NewState} ->
-                    cmd(T ++ Command, S#state{state = NewState});              
-                {stop, Reason, Command, NewState} ->
-                    cmd(T ++ Command, S#state{state = NewState}), 
-                    gen_server:stop(self(), Reason, infinity);
-                {'EXIT', Class, Reason, Stacktrace} ->
-                    erlang:raise(Class, Reason, Stacktrace)
-            end
+    % Modbus код функции 02 (чтение Inputs status)
+    case gen_tcp:send(Socket, Packet) of
+        ok ->
+            case gen_tcp:recv(Socket, 0, 1000) of
+                {ok, <<1:16, 0:16, 4:16, Dev_num:8, ?FUN_CODE_READ_INPUTS:8, Bdata/binary>>} -> 
+                    Res =
+                    try
+                        Mod:message(#read_inputs_status{
+                            device_number = Dev_num,
+                            register_number = Reg_num,
+                            quantity = Quantity,
+                            registers_value = Bdata
+                            }, S#state.state)      
+                    catch 
+                        throw:R -> {ok, R};
+                        C:R:Stacktrace -> {'EXIT', C, R, Stacktrace}
+                    end,
+                    case Res of
+                        {ok, Command, S2} ->
+                            cmd(T ++ Command, S#state{state = S2});              
+                        {stop, Reason, Command, S2} ->
+                            cmd(T ++ Command, S#state{state = S2}), 
+                            gen_server:stop(self(), Reason, infinity);
+                        {'EXIT', Class, Reason, Strace} ->
+                            erlang:raise(Class, Reason, Strace)
+                    end;
+                {ok, <<1:16, 0:16, 3:16, Dev_num:8, ?ERR_CODE_READ_INPUTS:8, Err_code:8>>} ->
+                    decryption_error_code:decrypt(Err_code),
+                    cmd(T, S);
+                {ok, _Else} ->
+                    cmd(T, S);
+                {error, Reason} ->
+                    Res = 
+                    try
+                        Mod:message({error, Reason}, S#state.state)
+                    catch 
+                        throw:R -> {ok, R};
+                        C:R:Stacktrace -> {'EXIT', C, R, Stacktrace}
+                    end,
+                    case Res of
+                        {ok, Command, S2} ->
+                            cmd(T ++ Command, S#state{state = S2});              
+                        {stop, Reason, Command, S2} ->
+                            cmd(T ++ Command, S#state{state = S2}), 
+                            gen_server:stop(self(), Reason, infinity);
+                        {'EXIT', Class, Reason, Strace} ->
+                            erlang:raise(Class, Reason, Strace)
+                    end
+            end;
+        {error, Reason} ->
+            gen_tcp:close(Socket),
+            S2 = S#state{socket_info = #socket_info{socket = 0, connection = close}},
+            disconnect_cmd(S2#state.mod, Reason, T, S2)
     end;
+
+cmd([#write_holding_register{} | T], #state{socket_info = #socket_info{socket = 0}} = S) ->
+    disconnect_cmd(S#state.mod, socket_closed, T, S);
 
 cmd([#write_holding_register{device_number = Dev_num, register_number = Reg_num, register_value = Value} | T], S) ->
     Packet = <<1:16, 0:16, 6:16, Dev_num:8, ?FUN_CODE_WRITE_HREG:8, Reg_num:16, Value:16>>,
     Socket = S#state.socket_info#socket_info.socket,
     Mod = S#state.mod,
-    if Socket =/= 0 ->
-        % Modbus код функции 06 (запись Holding reg)
-        case gen_tcp:send(Socket, Packet) of
-            ok ->
-                case gen_tcp:recv(Socket, 0, 1000) of
-                    {ok, Data} ->
-                        case Data of 
-                            <<1:16, 0:16, 6:16, Dev_num:8, ?FUN_CODE_WRITE_HREG:8, Reg_num:16, Value:16>> ->
-                                Res =
-                                try
-                                    Mod:message(#write_holding_register{
-                                        device_number = Dev_num,
-                                        register_number = Reg_num,
-                                        register_value = Value
-                                        }, S#state.state)     
-                                catch 
-                                    throw:R -> {ok, R};
-                                    C:R:S -> {'EXIT', C, R, S}
-                                end,
-                                case Res of
-                                    {ok, Command, NewState} ->
-                                        cmd(T ++ Command, S#state{state = NewState});              
-                                    {stop, Reason, Command, NewState} ->
-                                        cmd(T ++ Command, S#state{state = NewState}), 
-                                        gen_server:stop(self(), Reason, infinity);
-                                    {'EXIT', Class, Reason, Stacktrace} ->
-                                        erlang:raise(Class, Reason, Stacktrace)
-                                end;
-                            <<1:16, 0:16, 3:16, Dev_num:8, ?ERR_CODE_WRITE_HREG:8, Err_code:8>> ->
-                                decryption_error_code:decrypt(Err_code),
-                                cmd(T, S);
-                            _Else ->
-                                cmd(T, S)
-                        end;
-                    {error, Reason} ->
-                        Res = 
-                        try
-                            Mod:message({error, Reason}, S#state.state) 
-                        catch 
-                            throw:R -> {ok, R};
-                            C:R:S -> {'EXIT', C, R, S}
-                        end,
-                        case Res of
-                            {ok, Command, NewState} ->
-                                cmd(T ++ Command, S#state{state = NewState});              
-                            {stop, Reason, Command, NewState} ->
-                                cmd(T ++ Command, S#state{state = NewState}), 
-                                gen_server:stop(self(), Reason, infinity);
-                            {'EXIT', Class, Reason, Stacktrace} ->
-                                erlang:raise(Class, Reason, Stacktrace)
-                        end
-                end;
-            {error, Reason} ->
-                gen_tcp:close(Socket),
-                S1 = S#state{socket_info = #socket_info{socket = 0, connection = close}},
-                Res = 
-                try
-                    Mod:disconnect(Reason, S1#state.state)
-                catch 
-                    throw:R -> {ok, R};
-                    C:R:S -> {'EXIT', C, R, S}
-                end,
-                case Res of
-                    {ok, Command, NewState} ->
-                        cmd(T ++ Command, S1#state{state = NewState});              
-                    {stop, Reason, Command, NewState} ->
-                        cmd(T ++ Command, S1#state{state = NewState}), 
-                        gen_server:stop(self(), Reason, infinity);
-                    {'EXIT', Class, Reason, Stacktrace} ->
-                        erlang:raise(Class, Reason, Stacktrace)
-                end
-        end;
-        true ->
-            Res = 
-            try
-                Mod:disconnect(socket_closed, S#state.state)       
-            catch 
-                throw:R -> {ok, R};
-                C:R:S -> {'EXIT', C, R, S}
-            end,
-            case Res of
-                {ok, Command, NewState} ->
-                    cmd(T ++ Command, S#state{state = NewState});              
-                {stop, Reason, Command, NewState} ->
-                    cmd(T ++ Command, S#state{state = NewState}), 
-                    gen_server:stop(self(), Reason, infinity);
-                {'EXIT', Class, Reason, Stacktrace} ->
-                    erlang:raise(Class, Reason, Stacktrace)
-            end
+    % Modbus код функции 06 (запись Holding reg)
+    case gen_tcp:send(Socket, Packet) of
+        ok ->
+            case gen_tcp:recv(Socket, 0, 1000) of
+                {ok, <<1:16, 0:16, 6:16, Dev_num:8, ?FUN_CODE_WRITE_HREG:8, Reg_num:16, Value:16>>} ->
+                    Res =
+                    try
+                        Mod:message(#write_holding_register{
+                            device_number = Dev_num,
+                            register_number = Reg_num,
+                            register_value = Value
+                            }, S#state.state)     
+                    catch 
+                        throw:R -> {ok, R};
+                        C:R:Stacktrace -> {'EXIT', C, R, Stacktrace}
+                    end,
+                    case Res of
+                        {ok, Command, S2} ->
+                            cmd(T ++ Command, S#state{state = S2});              
+                        {stop, Reason, Command, S2} ->
+                            cmd(T ++ Command, S#state{state = S2}), 
+                            gen_server:stop(self(), Reason, infinity);
+                        {'EXIT', Class, Reason, Strace} ->
+                            erlang:raise(Class, Reason, Strace)
+                    end;
+                {ok, <<1:16, 0:16, 3:16, Dev_num:8, ?ERR_CODE_WRITE_HREG:8, Err_code:8>>} ->
+                    decryption_error_code:decrypt(Err_code),
+                    cmd(T, S);
+                {ok, _Else} ->
+                    cmd(T, S);
+                {error, Reason} ->
+                    Res = 
+                    try
+                        Mod:message({error, Reason}, S#state.state) 
+                    catch 
+                        throw:R -> {ok, R};
+                        C:R:Stacktrace -> {'EXIT', C, R, Stacktrace}
+                    end,
+                    case Res of
+                        {ok, Command, S2} ->
+                            cmd(T ++ Command, S#state{state = S2});              
+                        {stop, Reason, Command, S2} ->
+                            cmd(T ++ Command, S#state{state = S2}), 
+                            gen_server:stop(self(), Reason, infinity);
+                        {'EXIT', Class, Reason, Strace} ->
+                            erlang:raise(Class, Reason, Strace)
+                    end
+            end;
+        {error, Reason} ->
+            gen_tcp:close(Socket),
+            S2 = S#state{socket_info = #socket_info{socket = 0, connection = close}},
+            disconnect_cmd(S2#state.mod, Reason, T, S2)
     end;
+
+cmd([#write_holding_registers{} | T], #state{socket_info = #socket_info{socket = 0}} = S) ->
+    disconnect_cmd(S#state.mod, socket_closed, T, S);
 
 cmd([#write_holding_registers{device_number = Dev_num, register_number = Reg_num, registers_value = Values} | T], S) ->
     Reg_quantity = length(Values),
@@ -866,302 +666,216 @@ cmd([#write_holding_registers{device_number = Dev_num, register_number = Reg_num
     Packet = list_to_bin16(Values, Packet_without_values),
     Socket = S#state.socket_info#socket_info.socket,
     Mod = S#state.mod,
-    if Socket =/= 0 ->
-        % Modbus код функции 10 (запись Holding reg)
-        case gen_tcp:send(Socket, Packet) of
-            ok ->
-                case gen_tcp:recv(Socket, 0, 1000) of
-                    {ok, Data} ->
-                        case Data of 
-                            <<1:16, 0:16, 6:16, Dev_num:8, ?FUN_CODE_WRITE_HREGS:8, Reg_num:16, Reg_quantity:16>> ->
-                                Res =
-                                try
-                                    Mod:message(#write_holding_registers{
-                                        device_number = Dev_num,
-                                        register_number = Reg_num,
-                                        registers_value = Values
-                                        }, S#state.state)      
-                                catch 
-                                    throw:R -> {ok, R};
-                                    C:R:S -> {'EXIT', C, R, S}
-                                end,
-                                case Res of
-                                    {ok, Command, NewState} ->
-                                        cmd(T ++ Command, S#state{state = NewState});              
-                                    {stop, Reason, Command, NewState} ->
-                                        cmd(T ++ Command, S#state{state = NewState}), 
-                                        gen_server:stop(self(), Reason, infinity);
-                                    {'EXIT', Class, Reason, Stacktrace} ->
-                                        erlang:raise(Class, Reason, Stacktrace)
-                                end;
-                            <<1:16, 0:16, 3:16, Dev_num:8, ?ERR_CODE_WRITE_HREGS:8, Err_code:8>> ->
-                                decryption_error_code:decrypt(Err_code),
-                                cmd(T, S);
-                            _Else ->
-                                cmd(T, S)
-                        end;
-                    {error, Reason} ->
-                        Res = 
-                        try
-                            Mod:message({error, Reason}, S#state.state) 
-                        catch 
-                            throw:R -> {ok, R};
-                            C:R:S -> {'EXIT', C, R, S}
-                        end,
-                        case Res of
-                            {ok, Command, NewState} ->
-                                cmd(T ++ Command, S#state{state = NewState});              
-                            {stop, Reason, Command, NewState} ->
-                                cmd(T ++ Command, S#state{state = NewState}), 
-                                gen_server:stop(self(), Reason, infinity);
-                            {'EXIT', Class, Reason, Stacktrace} ->
-                                erlang:raise(Class, Reason, Stacktrace)
-                        end
-                end;
-            {error, Reason} ->
-                gen_tcp:close(Socket),
-                S1 = S#state{socket_info = #socket_info{socket = 0, connection = close}},
-                Res = 
-                try
-                    Mod:disconnect(Reason, S1#state.state)
-                catch 
-                    throw:R -> {ok, R};
-                    C:R:S -> {'EXIT', C, R, S}
-                end,
-                case Res of
-                    {ok, Command, NewState} ->
-                        cmd(T ++ Command, S1#state{state = NewState});              
-                    {stop, Reason, Command, NewState} ->
-                        cmd(T ++ Command, S1#state{state = NewState}), 
-                        gen_server:stop(self(), Reason, infinity);
-                    {'EXIT', Class, Reason, Stacktrace} ->
-                        erlang:raise(Class, Reason, Stacktrace)
-                end
-        end;
-        true ->
-            Res = 
-            try
-                Mod:disconnect(socket_closed, S#state.state)       
-            catch 
-                throw:R -> {ok, R};
-                C:R:S -> {'EXIT', C, R, S}
-            end,
-            case Res of
-                {ok, Command, NewState} ->
-                    cmd(T ++ Command, S#state{state = NewState});              
-                {stop, Reason, Command, NewState} ->
-                    cmd(T ++ Command, S#state{state = NewState}), 
-                    gen_server:stop(self(), Reason, infinity);
-                {'EXIT', Class, Reason, Stacktrace} ->
-                    erlang:raise(Class, Reason, Stacktrace)
-            end
+    % Modbus код функции 10 (запись Holding reg)
+    case gen_tcp:send(Socket, Packet) of
+        ok ->
+            case gen_tcp:recv(Socket, 0, 1000) of
+                {ok, <<1:16, 0:16, 6:16, Dev_num:8, ?FUN_CODE_WRITE_HREGS:8, Reg_num:16, Reg_quantity:16>>} ->
+                    Res =
+                    try
+                        Mod:message(#write_holding_registers{
+                            device_number = Dev_num,
+                            register_number = Reg_num,
+                            registers_value = Values
+                            }, S#state.state)      
+                    catch 
+                        throw:R -> {ok, R};
+                        C:R:Stacktrace -> {'EXIT', C, R, Stacktrace}
+                    end,
+                    case Res of
+                        {ok, Command, S2} ->
+                            cmd(T ++ Command, S#state{state = S2});              
+                        {stop, Reason, Command, S2} ->
+                            cmd(T ++ Command, S#state{state = S2}), 
+                            gen_server:stop(self(), Reason, infinity);
+                        {'EXIT', Class, Reason, Strace} ->
+                            erlang:raise(Class, Reason, Strace)
+                    end;
+                {ok, <<1:16, 0:16, 3:16, Dev_num:8, ?ERR_CODE_WRITE_HREGS:8, Err_code:8>>} ->
+                    decryption_error_code:decrypt(Err_code),
+                    cmd(T, S);
+                {ok, _Else} ->
+                    cmd(T, S);
+                {error, Reason} ->
+                    Res = 
+                    try
+                        Mod:message({error, Reason}, S#state.state) 
+                    catch 
+                        throw:R -> {ok, R};
+                        C:R:Stacktrace -> {'EXIT', C, R, Stacktrace}
+                    end,
+                    case Res of
+                        {ok, Command, S2} ->
+                            cmd(T ++ Command, S#state{state = S2});              
+                        {stop, Reason, Command, S2} ->
+                            cmd(T ++ Command, S#state{state = S2}), 
+                            gen_server:stop(self(), Reason, infinity);
+                        {'EXIT', Class, Reason, Strace} ->
+                            erlang:raise(Class, Reason, Strace)
+                    end
+            end;
+        {error, Reason} ->
+            gen_tcp:close(Socket),
+            S2 = S#state{socket_info = #socket_info{socket = 0, connection = close}},
+            disconnect_cmd(S2#state.mod, Reason, T, S2)
     end;
+
+cmd([#write_coils_status{} | T], #state{socket_info = #socket_info{socket = 0}} = S) ->
+    disconnect_cmd(S#state.mod, socket_closed, T, S);
 
 cmd([#write_coils_status{device_number = Dev_num, register_number = Reg_num, quantity = Quantity, registers_value = Value} | T], S) ->   
     Packet = <<1:16, 0:16, 8:16, Dev_num:8, ?FUN_CODE_WRITE_COILS:8, Reg_num:16, Quantity:16, 1:8, Value:8>>,
     Socket = S#state.socket_info#socket_info.socket,
     Mod = S#state.mod,
-    if Socket =/= 0 ->
-        % Modbus код функции 05 (запись Coil status)
-        case gen_tcp:send(Socket, Packet) of
-            ok ->
-                case gen_tcp:recv(Socket, 0, 1000) of
-                    {ok, Data} ->
-                        case Data of 
-                            <<1:16, 0:16, 6:16, Dev_num:8, ?FUN_CODE_WRITE_COILS:8, Reg_num:16, Quantity:16>> ->
-                                Res =
-                                try
-                                    Mod:message(#write_coils_status{
-                                        device_number = Dev_num,
-                                        register_number = Reg_num,
-                                        registers_value = Value,
-                                        quantity = Quantity
-                                        }, S#state.state)      
-                                catch 
-                                    throw:R -> {ok, R};
-                                    C:R:S -> {'EXIT', C, R, S}
-                                end,
-                                case Res of
-                                    {ok, Command, NewState} ->
-                                        cmd(T ++ Command, S#state{state = NewState});              
-                                    {stop, Reason, Command, NewState} ->
-                                        cmd(T ++ Command, S#state{state = NewState}), 
-                                        gen_server:stop(self(), Reason, infinity);
-                                    {'EXIT', Class, Reason, Stacktrace} ->
-                                        erlang:raise(Class, Reason, Stacktrace)
-                                end;
-                            <<1:16, 0:16, 3:16, Dev_num:8, ?ERR_CODE_WRITE_COILS:8, Err_code:8>> ->
-                                decryption_error_code:decrypt(Err_code),
-                                cmd(T, S);
-                            _Else ->
-                                cmd(T, S)
-                        end;
-                    {error, Reason} ->
-                        Res = 
-                        try
-                            Mod:message({error, Reason}, S#state.state) 
-                        catch 
-                            throw:R -> {ok, R};
-                            C:R:S -> {'EXIT', C, R, S}
-                        end,
-                        case Res of
-                            {ok, Command, NewState} ->
-                                cmd(T ++ Command, S#state{state = NewState});              
-                            {stop, Reason, Command, NewState} ->
-                                cmd(T ++ Command, S#state{state = NewState}), 
-                                gen_server:stop(self(), Reason, infinity);
-                            {'EXIT', Class, Reason, Stacktrace} ->
-                                erlang:raise(Class, Reason, Stacktrace)
-                        end
-                end;
-            {error, Reason} ->
-                gen_tcp:close(Socket),
-                S1 = S#state{socket_info = #socket_info{socket = 0, connection = close}},
-                Res = 
-                try
-                    Mod:disconnect(Reason, S1#state.state)
-                catch 
-                    throw:R -> {ok, R};
-                    C:R:S -> {'EXIT', C, R, S}
-                end,
-                case Res of
-                    {ok, Command, NewState} ->
-                        cmd(T ++ Command, S1#state{state = NewState});              
-                    {stop, Reason, Command, NewState} ->
-                        cmd(T ++ Command, S1#state{state = NewState}), 
-                        gen_server:stop(self(), Reason, infinity);
-                    {'EXIT', Class, Reason, Stacktrace} ->
-                        erlang:raise(Class, Reason, Stacktrace)
-                end
-        end;
-        true ->
-            Res = 
-            try
-                Mod:disconnect(socket_closed, S#state.state)        
-            catch 
-                throw:R -> {ok, R};
-                C:R:S -> {'EXIT', C, R, S}
-            end,
-            case Res of
-                {ok, Command, NewState} ->
-                    cmd(T ++ Command, S#state{state = NewState});              
-                {stop, Reason, Command, NewState} ->
-                    cmd(T ++ Command, S#state{state = NewState}), 
-                    gen_server:stop(self(), Reason, infinity);
-                {'EXIT', Class, Reason, Stacktrace} ->
-                    erlang:raise(Class, Reason, Stacktrace)
-            end
+    % Modbus код функции 05 (запись Coil status)
+    case gen_tcp:send(Socket, Packet) of
+        ok ->
+            case gen_tcp:recv(Socket, 0, 1000) of
+                {ok, <<1:16, 0:16, 6:16, Dev_num:8, ?FUN_CODE_WRITE_COILS:8, Reg_num:16, Quantity:16>>} ->
+                    Res =
+                    try
+                        Mod:message(#write_coils_status{
+                            device_number = Dev_num,
+                            register_number = Reg_num,
+                            registers_value = Value,
+                            quantity = Quantity
+                            }, S#state.state)      
+                    catch 
+                        throw:R -> {ok, R};
+                        C:R:Stacktrace -> {'EXIT', C, R, Stacktrace}
+                    end,
+                    case Res of
+                        {ok, Command, S2} ->
+                            cmd(T ++ Command, S#state{state = S2});              
+                        {stop, Reason, Command, S2} ->
+                            cmd(T ++ Command, S#state{state = S2}), 
+                            gen_server:stop(self(), Reason, infinity);
+                        {'EXIT', Class, Reason, Strace} ->
+                            erlang:raise(Class, Reason, Strace)
+                    end;
+                {ok, <<1:16, 0:16, 3:16, Dev_num:8, ?ERR_CODE_WRITE_COILS:8, Err_code:8>>} ->
+                    decryption_error_code:decrypt(Err_code),
+                    cmd(T, S);
+                {ok, _Else} ->
+                    cmd(T, S);
+                {error, Reason} ->
+                    Res = 
+                    try
+                        Mod:message({error, Reason}, S#state.state) 
+                    catch 
+                        throw:R -> {ok, R};
+                        C:R:Stacktrace -> {'EXIT', C, R, Stacktrace}
+                    end,
+                    case Res of
+                        {ok, Command, S2} ->
+                            cmd(T ++ Command, S#state{state = S2});              
+                        {stop, Reason, Command, S2} ->
+                            cmd(T ++ Command, S#state{state = S2}), 
+                            gen_server:stop(self(), Reason, infinity);
+                        {'EXIT', Class, Reason, Strace} ->
+                            erlang:raise(Class, Reason, Strace)
+                    end
+            end;
+        {error, Reason} ->
+            gen_tcp:close(Socket),
+            S2 = S#state{socket_info = #socket_info{socket = 0, connection = close}},
+            disconnect_cmd(S2#state.mod, Reason, T, S2)
     end;
+
+cmd([#write_coil_status{} | T], #state{socket_info = #socket_info{socket = 0}} = S) ->
+    disconnect_cmd(S#state.mod, socket_closed, T, S);
 
 cmd([#write_coil_status{device_number = Dev_num, register_number = Reg_num, register_value = Value} | T], S) ->
     Var = 
-        case Value of
-            0 -> <<0:16>>;
-            1 -> <<16#FF:8, 0:8>>;
-            _ -> {error, wrong_value}
-        end,
+    case Value of
+        0 -> <<0:16>>;
+        1 -> <<16#FF:8, 0:8>>;
+        _ -> {error, wrong_value}
+    end,
     Packet = 
-    if 
-        Var =:= {error, wrong_value} -> 
+    if Var =:= {error, wrong_value} -> 
             0;
         true ->
             <<1:16, 0:16, 6:16, Dev_num:8, ?FUN_CODE_WRITE_COIL:8, Reg_num:16, Var/binary>>
     end,
     Socket = S#state.socket_info#socket_info.socket,
     Mod = S#state.mod,
-    if Socket =/= 0 ->
-        % Modbus код функции 05 (запись Coil status)
-        case gen_tcp:send(Socket, Packet) of
-            ok ->
-                case gen_tcp:recv(Socket, 0, 1000) of
-                    {ok, Data} ->
-                        case Data of 
-                            <<1:16, 0:16, 6:16, Dev_num:8, ?FUN_CODE_WRITE_COIL:8, Reg_num:16, Var:16>> ->
-                                Res =
-                                try
-                                    Mod:message(#write_coil_status{
-                                        device_number = Dev_num,
-                                        register_number = Reg_num,
-                                        register_value = Value
-                                        }, S#state.state)      
-                                catch 
-                                    throw:R -> {ok, R};
-                                    C:R:S -> {'EXIT', C, R, S}
-                                end,
-                                case Res of
-                                    {ok, Command, NewState} ->
-                                        cmd(T ++ Command, S#state{state = NewState});              
-                                    {stop, Reason, Command, NewState} ->
-                                        cmd(T ++ Command, S#state{state = NewState}), 
-                                        gen_server:stop(self(), Reason, infinity);
-                                    {'EXIT', Class, Reason, Stacktrace} ->
-                                        erlang:raise(Class, Reason, Stacktrace)
-                                end;
-                            <<1:16, 0:16, 3:16, Dev_num:8, ?ERR_CODE_WRITE_COIL:8, Err_code:8>> ->
-                                decryption_error_code:decrypt(Err_code),
-                                cmd(T, S);
-                            _Else ->
-                                cmd(T, S)
-                        end;
-                    {error, Reason} ->
-                        Res = 
-                        try
-                            Mod:message({error, Reason}, S#state.state)
-                        catch 
-                            throw:R -> {ok, R};
-                            C:R:S -> {'EXIT', C, R, S}
-                        end,
-                        case Res of
-                            {ok, Command, NewState} ->
-                                cmd(T ++ Command, S#state{state = NewState});              
-                            {stop, Reason, Command, NewState} ->
-                                cmd(T ++ Command, S#state{state = NewState}), 
-                                gen_server:stop(self(), Reason, infinity);
-                            {'EXIT', Class, Reason, Stacktrace} ->
-                                erlang:raise(Class, Reason, Stacktrace)
-                        end
-                end;
-            {error, Reason} ->
-                gen_tcp:close(Socket),
-                S1 = S#state{socket_info = #socket_info{socket = 0, connection = close}},
-                Res = 
-                try
-                    Mod:disconnect(Reason, S1#state.state)
-                catch 
-                    throw:R -> {ok, R};
-                    C:R:S -> {'EXIT', C, R, S}
-                end,
-                case Res of
-                    {ok, Command, NewState} ->
-                        cmd(T ++ Command, S1#state{state = NewState});              
-                    {stop, Reason, Command, NewState} ->
-                        cmd(T ++ Command, S1#state{state = NewState}), 
-                        gen_server:stop(self(), Reason, infinity);
-                    {'EXIT', Class, Reason, Stacktrace} ->
-                        erlang:raise(Class, Reason, Stacktrace)
-                end
-        end;
-        true ->
-            Res = 
-            try
-                Mod:disconnect(socket_closed, S#state.state)       
-            catch 
-                throw:R -> {ok, R};
-                C:R:S -> {'EXIT', C, R, S}
-            end,
-            case Res of
-                {ok, Command, NewState} ->
-                    cmd(T ++ Command, S#state{state = NewState});              
-                {stop, Reason, Command, NewState} ->
-                    cmd(T ++ Command, S#state{state = NewState}), 
-                    gen_server:stop(self(), Reason, infinity);
-                {'EXIT', Class, Reason, Stacktrace} ->
-                    erlang:raise(Class, Reason, Stacktrace)
-            end
+    % Modbus код функции 05 (запись Coil status)
+    case gen_tcp:send(Socket, Packet) of
+        ok ->
+            case gen_tcp:recv(Socket, 0, 1000) of
+                {ok, <<1:16, 0:16, 6:16, Dev_num:8, ?FUN_CODE_WRITE_COIL:8, Reg_num:16, Var:16>>} ->
+                    Res =
+                    try
+                        Mod:message(#write_coil_status{
+                            device_number = Dev_num,
+                            register_number = Reg_num,
+                            register_value = Value
+                            }, S#state.state)      
+                    catch 
+                        throw:R -> {ok, R};
+                        C:R:Stacktrace -> {'EXIT', C, R, Stacktrace}
+                    end,
+                    case Res of
+                        {ok, Command, S2} ->
+                            cmd(T ++ Command, S#state{state = S2});              
+                        {stop, Reason, Command, S2} ->
+                            cmd(T ++ Command, S#state{state = S2}), 
+                            gen_server:stop(self(), Reason, infinity);
+                        {'EXIT', Class, Reason, Strace} ->
+                            erlang:raise(Class, Reason, Strace)
+                    end;
+                {ok, <<1:16, 0:16, 3:16, Dev_num:8, ?ERR_CODE_WRITE_COIL:8, Err_code:8>>} ->
+                    decryption_error_code:decrypt(Err_code),
+                    cmd(T, S);
+                {ok, _Else} ->
+                    cmd(T, S);
+                {error, Reason} ->
+                    Res = 
+                    try
+                        Mod:message({error, Reason}, S#state.state)
+                    catch 
+                        throw:R -> {ok, R};
+                        C:R:Stacktrace -> {'EXIT', C, R, Stacktrace}
+                    end,
+                    case Res of
+                        {ok, Command, S2} ->
+                            cmd(T ++ Command, S#state{state = S2});              
+                        {stop, Reason, Command, S2} ->
+                            cmd(T ++ Command, S#state{state = S2}), 
+                            gen_server:stop(self(), Reason, infinity);
+                        {'EXIT', Class, Reason, Strace} ->
+                            erlang:raise(Class, Reason, Strace)
+                    end
+            end;
+        {error, Reason} ->
+            gen_tcp:close(Socket),
+            S2 = S#state{socket_info = #socket_info{socket = 0, connection = close}},
+            disconnect_cmd(S2#state.mod, Reason, T, S2)
     end;
 
 cmd([], S) ->
     S.
+
+disconnect_cmd(Mod, Reason, T, S) ->
+    Mod = S#state.mod,
+    Res = 
+    try
+        Mod:disconnect(Reason, S#state.state)        
+    catch 
+        throw:R -> {ok, R};
+        C:R:Stacktrace -> {'EXIT', C, R, Stacktrace}
+    end,
+    case Res of
+        {ok, Command, S2} ->
+            cmd(T ++ Command, S#state{state = S2});              
+        {stop, Reason, Command, S2} ->
+            cmd(T ++ Command, S#state{state = S2}), 
+            gen_server:stop(self(), Reason, infinity);
+        {'EXIT', Class, Reason, Strace} ->
+    erlang:raise(Class, Reason, Strace)
+    end.
+
 
 bin_to_list16(<<>>, Acc) ->
     lists:reverse(Acc);
