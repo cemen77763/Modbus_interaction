@@ -35,9 +35,9 @@ stop() ->
     gen_modbus:stop(?SERVER).
 
 init([]) ->
-    ChangeSopts = #change_sock_opts{active = false, reuseaddr = true, nodelay = true, ifaddr = inet},
-    Connect = #connect{ip_addr = "localhost", port = 500},
-    {ok, [ChangeSopts, Connect], 5}.
+    _ChangeSopts = #change_sock_opts{active = false, reuseaddr = true, nodelay = true, ifaddr = inet},
+    Connect = #connect{ip_addr = "localhost", port = 5000},
+    {ok, [Connect], 5}.
 
 connect(#socket_info{ip_addr = Ip_addr, port = Port}, State) ->
     WriteHreg = #write_holding_register{
@@ -46,11 +46,14 @@ connect(#socket_info{ip_addr = Ip_addr, port = Port}, State) ->
         register_value = 15
         },
     io:format("Connection fine Ip addr: ~w Port ~w~n", [Ip_addr, Port]),
-    {ok, [WriteHreg], State}.
+    {ok, [WriteHreg], State};
+
+connect(_Socket_info, State) ->
+    {ok, [], State}.
 
 disconnect(Reason, State) ->
     io:format("Disconected because ~w.~n", [Reason]),
-    _Connect = #connect{ip_addr = "localhost", port = 500},
+    _Connect = #connect{ip_addr = "localhost", port = 502},
     {ok, [], State}.
 
 message(#read_holding_registers{device_number = Dev_num, register_number = Reg_num, registers_value = Ldata}, State) ->
@@ -86,17 +89,17 @@ message(#write_holding_register{device_number = Dev_num, register_number = Reg_n
     WriteHregs = #write_holding_registers{
         device_number = 1,
         register_number = 2,
-        registers_value = [13, 14, 15, 16, 17, 18, 19, 20]},
+        registers_value = [13, 14, 15, 16]},
     io:format("~nWriting holding register~ndevice: ~w~nfirst register: ~w~ndata: ~w~n~n", [Dev_num, Reg_num, Ldata]),
     {ok, [WriteHregs], State};
 
 message(#write_holding_registers{device_number = Dev_num, register_number = Reg_num, registers_value = Ldata}, State) ->
-    ReadHreg = #read_holding_registers{
+    WriteCoil = #write_coil_status{
         device_number = 1,
         register_number = 1,
-        quantity = 5},
+        register_value = 1},
     io:format("~nWriting holding registers~ndevice: ~w~nfirst register: ~w~ndata: ~w~n~n", [Dev_num, Reg_num, Ldata]),
-    {ok, [ReadHreg], State};
+    {ok, [WriteCoil], State};
 
 message(#write_coil_status{device_number = Dev_num, register_number = Reg_num, register_value = Data}, State) ->
     WriteCoils = #write_coils_status{
@@ -121,7 +124,7 @@ message(_RegInfo, State) ->
 handle_call(Request, _From, State) ->
     {reply, Request, [], State}.
 
-handle_continue(read, State) ->
+handle_continue(_Info, State) ->
     {noreply, [], State}.
 
 handle_info(_Info, State) ->

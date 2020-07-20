@@ -1,7 +1,7 @@
 
 %%% ------------------------- COMMANDS RECORDS -------------------------
 -record(socket_info, {
-    socket = 0,
+    socket = undefined,
     connection = close,
     ip_addr = "localhost",
     port = 502
@@ -43,53 +43,61 @@
     device_number :: integer(),
     register_number :: integer(),
     quantity :: integer(),
-    registers_value :: list() 
+    registers_value :: list(),
+    error_code :: integer()
     }).
 
 -record(read_input_registers, {
     device_number :: integer(),
     register_number :: integer(),
     quantity :: integer(),
-    registers_value :: list() 
+    registers_value :: list(),
+    error_code :: integer()
     }).
 
 -record(read_coils_status, {
     device_number :: integer(),
     register_number :: integer(),
     quantity :: integer(),
-    registers_value :: binary()
+    registers_value :: binary(),
+    error_code :: integer()
     }).
 
 -record(read_inputs_status, {
     device_number :: integer(),
     register_number :: integer(),
     quantity :: integer(),
-    registers_value :: binary()
+    registers_value :: binary(),
+    error_code :: integer()
     }).
 
 -record(write_holding_register, {
     device_number :: integer(),
     register_number :: integer(),
-    register_value :: number()
+    register_value :: number(),
+    error_code :: integer()
     }).
 
 -record(write_holding_registers, {
     device_number :: integer(),
     register_number :: integer(),
-    registers_value :: list()
+    registers_value :: list(),
+    error_code :: integer()
     }).
 
 -record(write_coil_status, {
     device_number :: integer(),
     register_number :: integer(),
-    register_value :: 0 | 1
+    register_value :: 0 | 1,
+    error_code :: integer()
     }).
 
 -record(write_coils_status, {
     device_number :: integer(),
     register_number :: integer(),
     quantity :: integer(),
-    registers_value :: binary()
+    registers_value :: binary(),
+    error_code :: integer()
     }).
 %%% ------------------------- COMMANDS RECORDS -------------------------
 
