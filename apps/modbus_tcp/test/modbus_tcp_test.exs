@@ -61,10 +61,6 @@ defmodule ModbusTcpTest do
         assert :modbus_tcp.connect(["localhost", 502], 5) == {:ok, [], 5}
     end
 
-    test "test message" do
-        assert :modbus_tcp.message(read_holding_registers(), 5) == {:ok, [], 5}
-    end
-
     test "test disconnect" do
         assert :modbus_tcp.disconnect(:normal, 5) == {:ok, [], 5}
     end

@@ -40,7 +40,7 @@
     ]).
 
 -record(state, {
-    state = undefined,
+    state,
     mod :: atom(),
     sock_info = #sock_info{},
     sock_opts = ?DEFAULT_SOCK_OPTS,
@@ -789,7 +789,7 @@ read_hregs(T, {Dev_num, Reg_num, Quantity}, S) ->
     % Modbus код функции 03 (чтение Holding reg)
     case gen_tcp:send(Socket, Packet) of
         ok ->
-        case gen_tcp:recv(Socket, 0, 1000) of
+        case gen_tcp:recv(Socket, 0) of
             {ok, <<1:16, 0:16, _:16, Dev_num:8, ?FUN_CODE_READ_HREGS:8, _:8, BinData/binary>>} ->
                 LData = bin_to_list16(BinData, []),
                 Res =
@@ -858,7 +858,7 @@ read_iregs(T, {Dev_num, Reg_num, Quantity}, S) ->
     % Modbus код функции 04 (чтение Input reg)
     case gen_tcp:send(Socket, Packet) of
         ok ->
-            case gen_tcp:recv(Socket, 0, 1000) of
+            case gen_tcp:recv(Socket, 0) of
                 {ok, <<1:16, 0:16, 5:16, Dev_num:8, ?FUN_CODE_READ_IREGS:8, _:8, BinData/binary>>} ->
                     LData = bin_to_list16(BinData, []),
                     Res =
@@ -929,7 +929,7 @@ read_coils(T, {Dev_num, Reg_num, Quantity}, S) ->
     % Modbus код функции 01 (чтение Coils status)
     case gen_tcp:send(Socket, Packet) of
         ok ->
-            case gen_tcp:recv(Socket, 0, 1000) of
+            case gen_tcp:recv(Socket, 0) of
                 {ok, <<1:16, 0:16, 4:16, Dev_num:8, ?FUN_CODE_READ_COILS:8, Bdata/binary>>} ->
                     Res =
                     try
@@ -999,7 +999,7 @@ read_inputs(T, {Dev_num, Reg_num, Quantity}, S) ->
     % Modbus код функции 02 (чтение Inputs status)
     case gen_tcp:send(Socket, Packet) of
         ok ->
-            case gen_tcp:recv(Socket, 0, 1000) of
+            case gen_tcp:recv(Socket, 0) of
                 {ok, <<1:16, 0:16, 4:16, Dev_num:8, ?FUN_CODE_READ_INPUTS:8, Bdata/binary>>} ->
                     Res =
                     try
@@ -1069,7 +1069,7 @@ write_hreg(T, {Dev_num, Reg_num, Value}, S) ->
     % Modbus код функции 06 (запись Holding reg)
     case gen_tcp:send(Socket, Packet) of
         ok ->
-            case gen_tcp:recv(Socket, 0, 1000) of
+            case gen_tcp:recv(Socket, 0) of
                 {ok, <<1:16, 0:16, 6:16, Dev_num:8, ?FUN_CODE_WRITE_HREG:8, Reg_num:16, Value:16>>} ->
                     Res =
                     try
@@ -1142,7 +1142,7 @@ write_hregs(T, {Dev_num, Reg_num, Values}, S) ->
     % Modbus код функции 10 (запись Holding reg)
     case gen_tcp:send(Socket, Packet) of
         ok ->
-            case gen_tcp:recv(Socket, 0, 1000) of
+            case gen_tcp:recv(Socket, 0) of
                 {ok, <<1:16, 0:16, 6:16, Dev_num:8, ?FUN_CODE_WRITE_HREGS:8, Reg_num:16, Reg_quantity:16>>} ->
                     Res =
                     try
@@ -1222,7 +1222,7 @@ write_creg(T, {Dev_num, Reg_num, Value}, S) ->
     % Modbus код функции 05 (запись Coil status)
     case gen_tcp:send(Socket, Packet) of
         ok ->
-            case gen_tcp:recv(Socket, 0, 1000) of
+            case gen_tcp:recv(Socket, 0) of
                 {ok, <<1:16, 0:16, 6:16, Dev_num:8, ?FUN_CODE_WRITE_COIL:8, Reg_num:16, Var2:16>>} ->
                     Res =
                     try
@@ -1291,7 +1291,7 @@ write_cregs(T, {Dev_num, Reg_num, Quantity, Values}, S) ->
     % Modbus код функции 05 (запись Coil status)
     case gen_tcp:send(Socket, Packet) of
         ok ->
-            case gen_tcp:recv(Socket, 0, 1000) of
+            case gen_tcp:recv(Socket, 0) of
                 {ok, <<1:16, 0:16, 6:16, Dev_num:8, ?FUN_CODE_WRITE_COILS:8, Reg_num:16, Quantity:16>>} ->
                     Res =
                     try
