@@ -28,7 +28,7 @@
     code_change/3
     ]).
 
--include("../include/gen_modbus.hrl").
+-include("gen_modbus.hrl").
 
 -define(DEFAULT_SOCK_OPTS, [
     inet,
@@ -42,8 +42,8 @@
 -record(state, {
     state = undefined,
     mod :: atom(),
-    socket_info = #socket_info{},
-    socket_opts = ?DEFAULT_SOCK_OPTS,
+    sock_info = #sock_info{},
+    sock_opts = ?DEFAULT_SOCK_OPTS,
     stage = init
     }).
 
@@ -134,21 +134,20 @@ init([Mod, Args]) ->
     end,
     case Res of
         {ok, Command, S} ->
-            S2 = cmd(Command, #state{mod = Mod, state = S}),
+            S2 = cmd(Command, #state{stage = init, mod = Mod, state = S}),
             case S2 of
                 {stop, _S3} ->
                     {stop, shutdown};
-                S3 ->
-                    {ok, S3}
+                S2 ->
+                    {ok, S2}
             end;
         {ok, Command, S, Timeout} ->
-            S2 = cmd(Command, #state{mod = Mod, state = S}),
-            io:format("Stage: ", S2#state.stage),
+            S2 = cmd(Command, #state{stage = init, mod = Mod, state = S}),
             case S2 of
                 {stop, _S3} ->
                     {stop, shutdown};
-                S3 ->
-                    {ok, S3, Timeout}
+                S2 ->
+                    {ok, S2, Timeout}
             end;
         {stop, Reason} ->
             {stop, Reason};
@@ -169,11 +168,24 @@ handle_continue(Info, S) ->
     end,
     case Res of
         {noreply, Command, S2} ->
-            {noreply, cmd(Command, S#state{state = S2})};
+            S3 = cmd(Command, S#state{state = S2}),
+            case S3 of
+                {stop, S4} ->
+                    {stop, shutdown, S4};
+                S3 ->
+                    {noreply, S3}
+            end;
         {noreply, Command, S2, Timeout} ->
-            {noreply, cmd(Command, S#state{state = S2}), Timeout};
+            S3 = cmd(Command, S#state{state = S2}),
+            case S3 of
+                {stop, S4} ->
+                    {stop, shutdown, S4};
+                S3 ->
+                    {noreply, S3, Timeout}
+            end;
         {stop, Reason, Command, S2} ->
-            {stop, Reason, cmd(Command, S#state{stage = stop, state = S2})};
+            {stop, S3} = cmd(Command, S#state{stage = stop, state = S2}),
+            {stop, Reason, S3};
         {'EXIT', Class, Reason, Strace} ->
             erlang:raise(Class, Reason, Strace)
     end.
@@ -189,17 +201,43 @@ handle_call(Request, From, S) ->
     end,
     case Res of
         {reply, Reply, Command, S2} ->
-            {reply, Reply, cmd(Command, S#state{state = S2})};
+            S3 = cmd(Command, S#state{state = S2}),
+            case S3 of
+                {stop, S4} ->
+                    {stop, shutdown, S4};
+                S3 ->
+                    {reply, Reply, S3}
+            end;
         {reply, Reply, Command, S2, Timeout} ->
-            {reply, Reply, cmd(Command, S#state{state = S2}), Timeout};
+            S3 = cmd(Command, S#state{state = S2}),
+            case S3 of
+                {stop, S4} ->
+                    {stop, shutdown, S4};
+                S3 ->
+                    {reply, Reply, S3, Timeout}
+            end;
         {noreply, Command, S2} ->
-            {noreply, cmd(Command, S#state{state = S2})};
+            S3 = cmd(Command, S#state{state = S2}),
+            case S3 of
+                {stop, S4} ->
+                    {stop, shutdown, S4};
+                S3 ->
+                    {noreply, S3}
+            end;
         {noreply, Command, S2, Timeout} ->
-            {noreply, cmd(Command, S#state{state = S2}), Timeout};
+            S3 = cmd(Command, S#state{state = S2}),
+            case S3 of
+                {stop, S4} ->
+                    {stop, shutdown, S4};
+                S3 ->
+                    {noreply, S3, Timeout}
+            end;
         {stop, Reason, Reply, Command, S2} ->
-            {stop, Reason, Reply, cmd(Command, S#state{stage = stop, state = S2})};
+            {stop, S3} = cmd(Command, S#state{stage = stop, state = S2}),
+            {stop, Reason, Reply, S3};
         {stop, Reason, Command, S2} ->
-            {stop, Reason, cmd(Command, S#state{stage = stop, state = S2})};
+            {stop, S3} = cmd(Command, S#state{stage = stop, state = S2}),
+            {stop, Reason, S3};
         {'EXIT', Class, Reason, Strace} ->
             erlang:raise(Class, Reason, Strace)
     end.
@@ -215,11 +253,24 @@ handle_cast(Msg, S) ->
     end,
     case Res of
         {noreply, Command, S2} ->
-            {noreply, cmd(Command, S#state{state = S2})};
+            S3 = cmd(Command, S#state{state = S2}),
+            case S3 of
+                {stop, S4} ->
+                    {stop, shutdown, S4};
+                S3 ->
+                    {noreply, S3}
+            end;
         {noreply, Command, S2, Timeout} ->
-            {noreply, cmd(Command, S#state{state = S2}), Timeout};
+            S3 = cmd(Command, S#state{state = S2}),
+            case S3 of
+                {stop, S4} ->
+                    {stop, shutdown, S4};
+                S3 ->
+                    {noreply, S3, Timeout}
+            end;
         {stop, Reason, Command, S2} ->
-            {stop, Reason, cmd(Command, S#state{stage = stop, state = S2})};
+            {stop, S3} = cmd(Command, S#state{stage = stop, state = S2}),
+            {stop, Reason, S3};
         {'EXIT', Class, Reason, Strace} ->
             erlang:raise(Class, Reason, Strace)
     end.
@@ -227,17 +278,23 @@ handle_cast(Msg, S) ->
 msg_resp(Res, S) ->
     case Res of
         {ok, Command, S2} ->
-            {noreply, cmd(Command, S#state{state = S2})};
+            S3 = cmd(Command, S#state{state = S2}),
+            case S3 of
+                {stop, S4} ->
+                    {stop, shutdown, S4};
+                S3 ->
+                    {noreply, S3}
+            end;
         {stop, Reason, Command, S2} ->
-            {stop, Reason, cmd(Command, S#state{stage = stop, state = S2})};
+            {stop, S3} = cmd(Command, S#state{stage = stop, state = S2}),
+            {stop, Reason, S3};
         {'EXIT', Class, Reason, Strace} ->
             erlang:raise(Class, Reason, Strace)
     end.
 
-handle_info({tcp_closed, #state{socket_info = #socket_info{socket = Socket}} = S}, S) ->
+handle_info({tcp_closed, _Socket}, S) ->
     Mod = S#state.mod,
-    Socket = S#state.socket_info#socket_info.socket,
-    gen_tcp:close(Socket),
+    gen_tcp:close(S#state.sock_info#sock_info.socket),
     Res =
     try
         Mod:disconnect(connection_closed, S#state.state)
@@ -294,7 +351,7 @@ handle_info({tcp, _Socket, <<1:16, 0:16, 4:16, Dev_num:8, ?FUN_CODE_READ_INPUTS:
     msg_resp(Res, S);
 
 handle_info({tcp, _Socket, <<1:16, 0:16, 6:16, Dev_num:8, ?FUN_CODE_WRITE_HREG:8, Reg_num:16, Value:16>>}, S) ->
-    Mod = S#state.state,
+    Mod = S#state.mod,
     Res =
     try
         Mod:message(#write_holding_register{device_number = Dev_num, register_number = Reg_num, register_value = Value}, S#state.state)
@@ -436,21 +493,34 @@ handle_info(Info, S) ->
     end,
     case Res of
         {noreply, Command, S2} ->
-            {noreply, cmd(Command, S#state{state = S2})};
+            S3 = cmd(Command, S#state{state = S2}),
+            case S3 of
+                {stop, S4} ->
+                    {stop, shutdown, S4};
+                S3 ->
+                    {noreply, S3}
+            end;
         {noreply, Command, S2, Timeout} ->
-            {noreply, cmd(Command, S#state{state = S2}), Timeout};
+            S3 = cmd(Command, S#state{state = S2}),
+            case S3 of
+                {stop, S4} ->
+                    {stop, shutdown, S4};
+                S3 ->
+                    {noreply, S3, Timeout}
+            end;
         {stop, Reason, Command, S2} ->
-            {stop, Reason, cmd(Command, S#state{stage = stop, state = S2})};
+            S3 = cmd(Command, S#state{stage = stop, state = S2}),
+            {stop, Reason, S3};
         {'EXIT', Class, Reason, Strace} ->
             erlang:raise(Class, Reason, Strace)
     end.
 
 terminate(Reason, S) ->
     Mod = S#state.mod,
-    Socket = S#state.socket_info#socket_info.socket,
+    Socket = S#state.sock_info#sock_info.socket,
     case Socket of
         undefined -> ok;
-        _ -> gen_tcp:close(S#state.socket_info#socket_info.socket)
+        _ -> gen_tcp:close(S#state.sock_info#sock_info.socket)
     end,
     S2 =
     case Mod:disconnect(shutdown, S#state.state) of
@@ -478,7 +548,7 @@ code_change(_OldVsn, S, _Extra) ->
 
 cmd([#connect{} | T], #state{stage = connect} = S) ->
     cmd(T, S);
-cmd([#connect{} | T], #state{stage = stop, socket_info = #socket_info{socket = undefined}} = S) ->
+cmd([#connect{} | T], #state{stage = stop, sock_info = #sock_info{socket = _Socket}} = S) ->
     cmd(T, S);
 cmd([#connect{ip_addr = Ip_addr, port = Port} | T], #state{stage = stop} = S) ->
     cmd_stop_connect(T, S, {Ip_addr, Port});
@@ -486,27 +556,27 @@ cmd([#connect{ip_addr = Ip_addr, port = Port} | T], #state{stage = _} = S) ->
     cmd_connect(T, S, {Ip_addr, Port});
 
 cmd([#change_sock_opts{active = Active, reuseaddr = Reuseaddr, nodelay = Nodelay, ifaddr = Ifaddr} | T], #state{stage = connect} = S) ->
-    S2 = S#state{socket_opts = [Ifaddr, binary, {packet, raw}, {active, Active}, {reuseaddr, Reuseaddr}, {nodelay, Nodelay}]},
-    inet:setopts(S2#state.socket_info#socket_info.socket, S2#state.socket_opts),
+    S2 = change_sopts([Ifaddr, binary, {packet, raw}, {active, Active}, {reuseaddr, Reuseaddr}, {nodelay, Nodelay}], S),
+    inet:setopts(S2#state.sock_info#sock_info.socket, S2#state.sock_opts),
     cmd(T, S2);
 cmd([#change_sock_opts{active = Active, reuseaddr = Reuseaddr, nodelay = Nodelay, ifaddr = Ifaddr} | T], #state{stage = stop} = S) ->
-    S2 = S#state{socket_opts = [Ifaddr, binary, {packet, raw}, {active, Active}, {reuseaddr, Reuseaddr}, {nodelay, Nodelay}]},
+    S2 = change_sopts([Ifaddr, binary, {packet, raw}, {active, Active}, {reuseaddr, Reuseaddr}, {nodelay, Nodelay}], S),
     cmd(T, S2);
 cmd([#change_sock_opts{active = Active, reuseaddr = Reuseaddr, nodelay = Nodelay, ifaddr = Ifaddr} | T], #state{stage = _} = S) ->
-    S2 = S#state{socket_opts = [Ifaddr, binary, {packet, raw}, {active, Active}, {reuseaddr, Reuseaddr}, {nodelay, Nodelay}]},
+    S2 = change_sopts([Ifaddr, binary, {packet, raw}, {active, Active}, {reuseaddr, Reuseaddr}, {nodelay, Nodelay}], S),
     cmd(T, S2);
 
 cmd([#disconnect{reason = Reason} | T], #state{stage = connect} = S) ->
-    Socket = S#state.socket_info#socket_info.socket,
+    Socket = S#state.sock_info#sock_info.socket,
     gen_tcp:close(Socket),
-    S2 = S#state{socket_info = #socket_info{socket = undefined, connection = close}},
+    S2 = S#state{sock_info = #sock_info{socket = undefined, connection = close}},
     cmd_disconnect(S2#state.mod, Reason, T, S2);
-cmd([#disconnect{} | T], #state{socket_info = #socket_info{socket = undefined}, stage = stop} = S) ->
+cmd([#disconnect{} | T], #state{sock_info = #sock_info{socket = undefined}, stage = stop} = S) ->
     cmd(T, S);
 cmd([#disconnect{reason = Reason} | T], #state{stage = stop} = S) ->
-    Socket = S#state.socket_info#socket_info.socket,
+    Socket = S#state.sock_info#sock_info.socket,
     gen_tcp:close(Socket),
-    S2 = S#state{socket_info = #socket_info{socket = undefined, connection = close}},
+    S2 = S#state{sock_info = #sock_info{socket = undefined, connection = close}},
     cmd_stop_disconnect(S2#state.mod, Reason, T, S2);
 cmd([#disconnect{} | T], #state{stage = _} = S) ->
     cmd(T, S);
@@ -515,7 +585,7 @@ cmd([#read_holding_registers{} | T], #state{stage = init} = S) ->
     cmd(T, S);
 cmd([#read_holding_registers{} | T], #state{stage = disconnect} = S) ->
     cmd_disconnect(S#state.mod, socket_closed, T, S);
-cmd([#read_holding_registers{} | T], #state{stage = stop, socket_info = #socket_info{socket = undefined}} = S) ->
+cmd([#read_holding_registers{} | T], #state{stage = stop, sock_info = #sock_info{socket = undefined}} = S) ->
     cmd_disconnect(S#state.mod, socket_closed, T, S);
 cmd([#read_holding_registers{device_number = Dev_num, register_number = Reg_num, quantity = Quantity} | T], #state{stage = stop} = S) ->
     read_hregs(T, {Dev_num, Reg_num, Quantity}, S);
@@ -526,7 +596,7 @@ cmd([#read_input_registers{} | T], #state{stage = init} = S) ->
     cmd(T, S);
 cmd([#read_input_registers{} | T], #state{stage = disconnect} = S) ->
     cmd_disconnect(S#state.mod, socket_closed, T, S);
-cmd([#read_input_registers{} | T], #state{stage = stop, socket_info = #socket_info{socket = undefined}} = S) ->
+cmd([#read_input_registers{} | T], #state{stage = stop, sock_info = #sock_info{socket = undefined}} = S) ->
     cmd_disconnect(S#state.mod, socket_closed, T, S);
 cmd([#read_input_registers{device_number = Dev_num, register_number = Reg_num, quantity = Quantity} | T], #state{stage = stop} = S) ->
     read_iregs(T, {Dev_num, Reg_num, Quantity}, S);
@@ -537,9 +607,9 @@ cmd([#read_coils_status{} | T], #state{stage = init} = S) ->
     cmd(T, S);
 cmd([#read_coils_status{} | T], #state{stage = disconnect} = S) ->
     cmd_disconnect(S#state.mod, socket_closed, T, S);
-cmd([#read_coils_status{} | T], #state{stage = stop, socket_info = #socket_info{socket = undefined}} = S) ->
+cmd([#read_coils_status{} | T], #state{stage = stop, sock_info = #sock_info{socket = undefined}} = S) ->
     cmd_disconnect(S#state.mod, socket_closed, T, S);
-cmd([#read_coils_status{} | T], #state{socket_info = #socket_info{socket = undefined}} = S) ->
+cmd([#read_coils_status{} | T], #state{sock_info = #sock_info{socket = undefined}} = S) ->
     cmd_disconnect(S#state.mod, socket_closed, T, S);
 cmd([#read_coils_status{device_number = Dev_num, register_number = Reg_num, quantity = Quantity} | T], #state{stage = stop} = S) ->
     read_coils(T, {Dev_num, Reg_num, Quantity}, S);
@@ -550,9 +620,9 @@ cmd([#read_inputs_status{} | T], #state{stage = init} = S) ->
     cmd(T, S);
 cmd([#read_inputs_status{} | T], #state{stage = disconnect} = S) ->
     cmd_disconnect(S#state.mod, socket_closed, T, S);
-cmd([#read_inputs_status{} | T], #state{stage = stop, socket_info = #socket_info{socket = undefined}} = S) ->
+cmd([#read_inputs_status{} | T], #state{stage = stop, sock_info = #sock_info{socket = undefined}} = S) ->
     cmd_disconnect(S#state.mod, socket_closed, T, S);
-cmd([#read_inputs_status{} | T], #state{socket_info = #socket_info{socket = undefined}} = S) ->
+cmd([#read_inputs_status{} | T], #state{sock_info = #sock_info{socket = undefined}} = S) ->
     cmd_disconnect(S#state.mod, socket_closed, T, S);
 cmd([#read_inputs_status{device_number = Dev_num, register_number = Reg_num, quantity = Quantity} | T], #state{stage = stop} = S) ->
     read_inputs(T, {Dev_num, Reg_num, Quantity}, S);
@@ -563,9 +633,9 @@ cmd([#write_holding_register{} | T], #state{stage = init} = S) ->
     cmd(T, S);
 cmd([#write_holding_register{} | T], #state{stage = disconnect} = S) ->
     cmd_disconnect(S#state.mod, socket_closed, T, S);
-cmd([#write_holding_register{} | T], #state{stage = stop, socket_info = #socket_info{socket = undefined}} = S) ->
+cmd([#write_holding_register{} | T], #state{stage = stop, sock_info = #sock_info{socket = undefined}} = S) ->
     cmd_disconnect(S#state.mod, socket_closed, T, S);
-cmd([#write_holding_register{} | T], #state{socket_info = #socket_info{socket = undefined}} = S) ->
+cmd([#write_holding_register{} | T], #state{sock_info = #sock_info{socket = undefined}} = S) ->
     cmd_disconnect(S#state.mod, socket_closed, T, S);
 cmd([#write_holding_register{device_number = Dev_num, register_number = Reg_num, register_value = Value} | T], #state{stage = stop} = S) ->
     write_hreg(T, {Dev_num, Reg_num, Value}, S);
@@ -576,9 +646,9 @@ cmd([#write_holding_registers{} | T], #state{stage = init} = S) ->
     cmd(T, S);
 cmd([#write_holding_registers{} | T], #state{stage = disconnect} = S) ->
     cmd_disconnect(S#state.mod, socket_closed, T, S);
-cmd([#write_holding_registers{} | T], #state{stage = stop, socket_info = #socket_info{socket = undefined}} = S) ->
+cmd([#write_holding_registers{} | T], #state{stage = stop, sock_info = #sock_info{socket = undefined}} = S) ->
     cmd_disconnect(S#state.mod, socket_closed, T, S);
-cmd([#write_holding_registers{} | T], #state{socket_info = #socket_info{socket = undefined}} = S) ->
+cmd([#write_holding_registers{} | T], #state{sock_info = #sock_info{socket = undefined}} = S) ->
     cmd_disconnect(S#state.mod, socket_closed, T, S);
 cmd([#write_holding_registers{device_number = Dev_num, register_number = Reg_num, registers_value = Values} | T], #state{stage = stop} = S) ->
     write_hregs(T, {Dev_num, Reg_num, Values}, S);
@@ -589,9 +659,9 @@ cmd([#write_coil_status{} | T], #state{stage = init} = S) ->
     cmd(T, S);
 cmd([#write_coil_status{} | T], #state{stage = disconnect} = S) ->
     cmd_disconnect(S#state.mod, socket_closed, T, S);
-cmd([#write_coil_status{} | T], #state{stage = stop, socket_info = #socket_info{socket = undefined}} = S) ->
+cmd([#write_coil_status{} | T], #state{stage = stop, sock_info = #sock_info{socket = undefined}} = S) ->
     cmd_disconnect(S#state.mod, socket_closed, T, S);
-cmd([#write_coil_status{} | T], #state{socket_info = #socket_info{socket = undefined}} = S) ->
+cmd([#write_coil_status{} | T], #state{sock_info = #sock_info{socket = undefined}} = S) ->
     cmd_disconnect(S#state.mod, socket_closed, T, S);
 cmd([#write_coil_status{device_number = Dev_num, register_number = Reg_num, register_value = Value} | T], #state{stage = stop} = S) ->
     write_creg(T, {Dev_num, Reg_num, Value}, S);
@@ -602,9 +672,9 @@ cmd([#write_coils_status{} | T], #state{stage = init} = S) ->
     cmd(T, S);
 cmd([#write_coils_status{} | T], #state{stage = disconnect} = S) ->
     cmd_disconnect(S#state.mod, socket_closed, T, S);
-cmd([#write_coils_status{} | T], #state{stage = stop, socket_info = #socket_info{socket = undefined}} = S) ->
+cmd([#write_coils_status{} | T], #state{stage = stop, sock_info = #sock_info{socket = undefined}} = S) ->
     cmd_disconnect(S#state.mod, socket_closed, T, S);
-cmd([#write_coils_status{} | T], #state{socket_info = #socket_info{socket = undefined}} = S) ->
+cmd([#write_coils_status{} | T], #state{sock_info = #sock_info{socket = undefined}} = S) ->
     cmd_disconnect(S#state.mod, socket_closed, T, S);
 cmd([#write_coils_status{device_number = Dev_num, register_number = Reg_num, quantity = Quantity, registers_value = Values} | T], #state{stage = stop} = S) ->
     write_cregs(T, {Dev_num, Reg_num, Quantity, Values}, S);
@@ -612,7 +682,6 @@ cmd([#write_coils_status{device_number = Dev_num, register_number = Reg_num, qua
     write_cregs(T, {Dev_num, Reg_num, Quantity, Values}, S);
 
 cmd([], #state{stage = stop} = S) ->
-    io:format("~nStage: ~w~n", [S#state.stage]),
     {stop, S};
 cmd([], S) ->
     S.
@@ -655,13 +724,9 @@ cmd_stop_disconnect(Mod, Reason, T, S) ->
 
 cmd_connect(T, S, {Ip_addr, Port}) ->
     Mod = S#state.mod,
-    case S#state.socket_info#socket_info.socket of
-        undefined -> ok;
-        _ -> gen_tcp:close(S#state.socket_info#socket_info.socket)
-    end,
-    case {_, Socket} = gen_tcp:connect(Ip_addr, Port, S#state.socket_opts) of
+    case {_, Socket} = gen_tcp:connect(Ip_addr, Port, S#state.sock_opts) of
         {ok, _} ->
-            S2 = S#state{socket_info = #socket_info{
+            S2 = S#state{sock_info = #sock_info{
                 socket = Socket,
                 ip_addr = Ip_addr,
                 port = Port,
@@ -669,33 +734,29 @@ cmd_connect(T, S, {Ip_addr, Port}) ->
                 stage = connect},
             Res =
             try
-                Mod:connect(S2#state.socket_info, S2#state.state)
+                Mod:connect(S2#state.sock_info, S2#state.state)
             catch
                 throw:R -> {ok, R};
                 C:R:Stacktrace -> {'EXIT', C, R, Stacktrace}
             end,
             case Res of
                 {ok, Command, S3} ->
-                    cmd(T ++ Command, S2#state{state = S3});
+                    cmd(T ++ Command, S2#state{state = S3, stage = connect});
                 {stop, _Reason, Command, S3} ->
                     cmd(T ++ Command, S2#state{state = S3, stage = stop});
                 {'EXIT', Class, Reason, Strace} ->
                     erlang:raise(Class, Reason, Strace)
             end;
         {error, Reason} ->
-            S2 = S#state{socket_info = #socket_info{socket = undefined, connection = close}},
+            S2 = S#state{sock_info = #sock_info{socket = undefined, connection = close}},
             cmd_disconnect(S2#state.mod, Reason, T, S2)
     end.
 
 cmd_stop_connect(T, S, {Ip_addr, Port}) ->
     Mod = S#state.mod,
-    case S#state.socket_info#socket_info.socket of
-        undefined -> ok;
-        _ -> gen_tcp:close(S#state.socket_info#socket_info.socket)
-    end,
-    case {_, Socket} = gen_tcp:connect(Ip_addr, Port, S#state.socket_opts) of
+    case {_, Socket} = gen_tcp:connect(Ip_addr, Port, S#state.sock_opts) of
         {ok, _} ->
-            S2 = S#state{socket_info = #socket_info{
+            S2 = S#state{sock_info = #sock_info{
                 socket = Socket,
                 ip_addr = Ip_addr,
                 port = Port,
@@ -703,7 +764,7 @@ cmd_stop_connect(T, S, {Ip_addr, Port}) ->
                 stage = stop},
             Res =
             try
-                Mod:connect(S2#state.socket_info, S2#state.state)
+                Mod:connect(S2#state.sock_info, S2#state.state)
             catch
                 throw:R -> {ok, R};
                 C:R:Stacktrace -> {'EXIT', C, R, Stacktrace}
@@ -717,13 +778,13 @@ cmd_stop_connect(T, S, {Ip_addr, Port}) ->
                     erlang:raise(Class, Reason, Strace)
             end;
         {error, Reason} ->
-            S2 = S#state{stage = stop, socket_info = #socket_info{socket = undefined, connection = close}},
+            S2 = S#state{stage = stop, sock_info = #sock_info{socket = undefined, connection = close}},
             cmd_disconnect(S2#state.mod, Reason, T, S2)
     end.
 
 read_hregs(T, {Dev_num, Reg_num, Quantity}, S) ->
     Packet = <<1:16, 0:16, 6:16, Dev_num:8, ?FUN_CODE_READ_HREGS:8, Reg_num:16, Quantity:16>>,
-    Socket = S#state.socket_info#socket_info.socket,
+    Socket = S#state.sock_info#sock_info.socket,
     Mod = S#state.mod,
     % Modbus код функции 03 (чтение Holding reg)
     case gen_tcp:send(Socket, Packet) of
@@ -792,7 +853,7 @@ read_hregs(T, {Dev_num, Reg_num, Quantity}, S) ->
 
 read_iregs(T, {Dev_num, Reg_num, Quantity}, S) ->
     Packet = <<1:16, 0:16, 6:16, Dev_num:8, ?FUN_CODE_READ_IREGS:8, Reg_num:16, 1:16>>,
-    Socket = S#state.socket_info#socket_info.socket,
+    Socket = S#state.sock_info#sock_info.socket,
     Mod = S#state.mod,
     % Modbus код функции 04 (чтение Input reg)
     case gen_tcp:send(Socket, Packet) of
@@ -857,13 +918,13 @@ read_iregs(T, {Dev_num, Reg_num, Quantity}, S) ->
             end;
         {error, Reason} ->
             gen_tcp:close(Socket),
-            S2 = S#state{socket_info = #socket_info{socket = undefined, connection = close}},
+            S2 = S#state{sock_info = #sock_info{socket = undefined, connection = close}},
             cmd_disconnect(S2#state.mod, Reason, T, S2)
     end.
 
 read_coils(T, {Dev_num, Reg_num, Quantity}, S) ->
     Packet = <<1:16, 0:16, 6:16, Dev_num:8, ?FUN_CODE_READ_COILS:8, Reg_num:16, Quantity:16>>,
-    Socket = S#state.socket_info#socket_info.socket,
+    Socket = S#state.sock_info#sock_info.socket,
     Mod = S#state.mod,
     % Modbus код функции 01 (чтение Coils status)
     case gen_tcp:send(Socket, Packet) of
@@ -927,13 +988,13 @@ read_coils(T, {Dev_num, Reg_num, Quantity}, S) ->
             end;
         {error, Reason} ->
             gen_tcp:close(Socket),
-            S2 = S#state{socket_info = #socket_info{socket = undefined, connection = close}},
+            S2 = S#state{sock_info = #sock_info{socket = undefined, connection = close}},
             cmd_disconnect(S2#state.mod, Reason, T, S2)
     end.
 
 read_inputs(T, {Dev_num, Reg_num, Quantity}, S) ->
     Packet = <<1:16, 0:16, 6:16, Dev_num:8, ?FUN_CODE_READ_INPUTS:8, Reg_num:16, Quantity:16>>,
-    Socket = S#state.socket_info#socket_info.socket,
+    Socket = S#state.sock_info#sock_info.socket,
     Mod = S#state.mod,
     % Modbus код функции 02 (чтение Inputs status)
     case gen_tcp:send(Socket, Packet) of
@@ -997,13 +1058,13 @@ read_inputs(T, {Dev_num, Reg_num, Quantity}, S) ->
             end;
         {error, Reason} ->
             gen_tcp:close(Socket),
-            S2 = S#state{socket_info = #socket_info{socket = undefined, connection = close}},
+            S2 = S#state{sock_info = #sock_info{socket = undefined, connection = close}},
             cmd_disconnect(S2#state.mod, Reason, T, S2)
     end.
 
 write_hreg(T, {Dev_num, Reg_num, Value}, S) ->
     Packet = <<1:16, 0:16, 6:16, Dev_num:8, ?FUN_CODE_WRITE_HREG:8, Reg_num:16, Value:16>>,
-    Socket = S#state.socket_info#socket_info.socket,
+    Socket = S#state.sock_info#sock_info.socket,
     Mod = S#state.mod,
     % Modbus код функции 06 (запись Holding reg)
     case gen_tcp:send(Socket, Packet) of
@@ -1066,7 +1127,7 @@ write_hreg(T, {Dev_num, Reg_num, Value}, S) ->
             end;
         {error, Reason} ->
             gen_tcp:close(Socket),
-            S2 = S#state{socket_info = #socket_info{socket = undefined, connection = close}},
+            S2 = S#state{sock_info = #sock_info{socket = undefined, connection = close}},
             cmd_disconnect(S2#state.mod, Reason, T, S2)
     end.
 
@@ -1076,7 +1137,7 @@ write_hregs(T, {Dev_num, Reg_num, Values}, S) ->
     Mbap_len = (7 + Len),
     Packet_without_values = <<1:16, 0:16, Mbap_len:16, Dev_num:8, ?FUN_CODE_WRITE_HREGS:8, Reg_num:16, Reg_quantity:16, Len:8>>,
     Packet = list_to_bin16(Values, Packet_without_values),
-    Socket = S#state.socket_info#socket_info.socket,
+    Socket = S#state.sock_info#sock_info.socket,
     Mod = S#state.mod,
     % Modbus код функции 10 (запись Holding reg)
     case gen_tcp:send(Socket, Packet) of
@@ -1139,7 +1200,7 @@ write_hregs(T, {Dev_num, Reg_num, Values}, S) ->
             end;
         {error, Reason} ->
             gen_tcp:close(Socket),
-            S2 = S#state{socket_info = #socket_info{socket = undefined, connection = close}},
+            S2 = S#state{sock_info = #sock_info{socket = undefined, connection = close}},
             cmd_disconnect(S2#state.mod, Reason, T, S2)
     end.
 
@@ -1156,19 +1217,19 @@ write_creg(T, {Dev_num, Reg_num, Value}, S) ->
         true ->
             <<1:16, 0:16, 6:16, Dev_num:8, ?FUN_CODE_WRITE_COIL:8, Reg_num:16, Var/binary>>
     end,
-    Socket = S#state.socket_info#socket_info.socket,
+    Socket = S#state.sock_info#sock_info.socket,
     Mod = S#state.mod,
     % Modbus код функции 05 (запись Coil status)
     case gen_tcp:send(Socket, Packet) of
         ok ->
             case gen_tcp:recv(Socket, 0, 1000) of
-                {ok, <<1:16, 0:16, 6:16, Dev_num:8, ?FUN_CODE_WRITE_COIL:8, Reg_num:16, Var:16>>} ->
+                {ok, <<1:16, 0:16, 6:16, Dev_num:8, ?FUN_CODE_WRITE_COIL:8, Reg_num:16, Var2:16>>} ->
                     Res =
                     try
                         Mod:message(#write_coil_status{
                             device_number = Dev_num,
                             register_number = Reg_num,
-                            register_value = Value
+                            register_value = Var2
                             }, S#state.state)
                     catch
                         throw:R -> {ok, R};
@@ -1219,13 +1280,13 @@ write_creg(T, {Dev_num, Reg_num, Value}, S) ->
             end;
         {error, Reason} ->
             gen_tcp:close(Socket),
-            S2 = S#state{socket_info = #socket_info{socket = undefined, connection = close}},
+            S2 = S#state{sock_info = #sock_info{socket = undefined, connection = close}},
             cmd_disconnect(S2#state.mod, Reason, T, S2)
     end.
 
 write_cregs(T, {Dev_num, Reg_num, Quantity, Values}, S) ->
     Packet = <<1:16, 0:16, 8:16, Dev_num:8, ?FUN_CODE_WRITE_COILS:8, Reg_num:16, Quantity:16, 1:8, Values:8>>,
-    Socket = S#state.socket_info#socket_info.socket,
+    Socket = S#state.sock_info#sock_info.socket,
     Mod = S#state.mod,
     % Modbus код функции 05 (запись Coil status)
     case gen_tcp:send(Socket, Packet) of
@@ -1289,9 +1350,13 @@ write_cregs(T, {Dev_num, Reg_num, Quantity, Values}, S) ->
             end;
         {error, Reason} ->
             gen_tcp:close(Socket),
-            S2 = S#state{socket_info = #socket_info{socket = undefined, connection = close}},
+            S2 = S#state{sock_info = #sock_info{socket = undefined, connection = close}},
             cmd_disconnect(S2#state.mod, Reason, T, S2)
     end.
+
+change_sopts(Opts, S) when is_list(Opts) ->
+    SocketOpts = lists:filter(fun(X) -> X =/= undefined end, Opts),
+    S#state{sock_opts = SocketOpts}.
 
 bin_to_list16(<<>>, Acc) ->
     lists:reverse(Acc);

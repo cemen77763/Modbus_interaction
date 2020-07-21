@@ -6,7 +6,7 @@
 
 -behaviour(gen_modbus).
 
--include_lib("../../gen_modbus/include/gen_modbus.hrl").
+-include_lib("gen_modbus/include/gen_modbus.hrl").
 
 -export([
     start/0,
@@ -35,11 +35,11 @@ stop() ->
     gen_modbus:stop(?SERVER).
 
 init([]) ->
-    _ChangeSopts = #change_sock_opts{active = false, reuseaddr = true, nodelay = true, ifaddr = inet},
-    Connect = #connect{ip_addr = "localhost", port = 5000},
-    {ok, [Connect], 5}.
+    ChangeSopts = #change_sock_opts{active = true, reuseaddr = true, nodelay = true},
+    Connect = #connect{ip_addr = "localhost", port = 502},
+    {ok, [ChangeSopts, Connect], 5}.
 
-connect(#socket_info{ip_addr = Ip_addr, port = Port}, State) ->
+connect(#sock_info{ip_addr = Ip_addr, port = Port}, State) ->
     WriteHreg = #write_holding_register{
         device_number = 1,
         register_number = 1,
@@ -48,7 +48,7 @@ connect(#socket_info{ip_addr = Ip_addr, port = Port}, State) ->
     io:format("Connection fine Ip addr: ~w Port ~w~n", [Ip_addr, Port]),
     {ok, [WriteHreg], State};
 
-connect(_Socket_info, State) ->
+connect(_sock_info, State) ->
     {ok, [], State}.
 
 disconnect(Reason, State) ->
@@ -81,9 +81,9 @@ message(#read_coils_status{device_number = Dev_num, register_number = Reg_num, q
     {ok, [ReadInput], State};
 
 message(#read_inputs_status{device_number = Dev_num, register_number = Reg_num, quantity = _Quantity, registers_value = Bdata}, State) ->
-    Disconnect = #disconnect{reason = normal},
+    _Disconnect = #disconnect{reason = normal},
     io:format("~nReading inputs status~ndevice: ~w~nfirst register: ~w~ndata: ~w~n~n", [Dev_num, Reg_num, Bdata]),
-    {ok, [Disconnect], State};
+    {ok, [], State};
 
 message(#write_holding_register{device_number = Dev_num, register_number = Reg_num, register_value = Ldata}, State) ->
     WriteHregs = #write_holding_registers{

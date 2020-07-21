@@ -1,6 +1,6 @@
 
 %%% ------------------------- COMMANDS RECORDS -------------------------
--record(socket_info, {
+-record(sock_info, {
     socket = undefined,
     connection = close,
     ip_addr = "localhost",
