@@ -548,10 +548,10 @@ code_change(_OldVsn, S, _Extra) ->
 
 cmd([#connect{} | T], #state{stage = connect} = S) ->
     cmd(T, S);
-cmd([#connect{} | T], #state{stage = stop, sock_info = #sock_info{socket = _Socket}} = S) ->
-    cmd(T, S);
-cmd([#connect{ip_addr = Ip_addr, port = Port} | T], #state{stage = stop} = S) ->
+cmd([#connect{ip_addr = Ip_addr, port = Port} | T], #state{sock_info = #sock_info{socket = undefined}, stage = stop} = S) ->
     cmd_stop_connect(T, S, {Ip_addr, Port});
+cmd([#connect{} | T], #state{stage = stop} = S) ->
+    cmd(T, S);
 cmd([#connect{ip_addr = Ip_addr, port = Port} | T], #state{stage = _} = S) ->
     cmd_connect(T, S, {Ip_addr, Port});
 
@@ -559,8 +559,12 @@ cmd([#change_sock_opts{active = Active, reuseaddr = Reuseaddr, nodelay = Nodelay
     S2 = change_sopts([Ifaddr, binary, {packet, raw}, {active, Active}, {reuseaddr, Reuseaddr}, {nodelay, Nodelay}], S),
     inet:setopts(S2#state.sock_info#sock_info.socket, S2#state.sock_opts),
     cmd(T, S2);
+cmd([#change_sock_opts{active = Active, reuseaddr = Reuseaddr, nodelay = Nodelay, ifaddr = Ifaddr} | T], #state{sock_info = #sock_info{socket = undefined}, stage = stop} = S) ->
+    S2 = change_sopts([Ifaddr, binary, {packet, raw}, {active, Active}, {reuseaddr, Reuseaddr}, {nodelay, Nodelay}], S),
+    cmd(T, S2);
 cmd([#change_sock_opts{active = Active, reuseaddr = Reuseaddr, nodelay = Nodelay, ifaddr = Ifaddr} | T], #state{stage = stop} = S) ->
     S2 = change_sopts([Ifaddr, binary, {packet, raw}, {active, Active}, {reuseaddr, Reuseaddr}, {nodelay, Nodelay}], S),
+    inet:setopts(S2#state.sock_info#sock_info.socket, S2#state.sock_opts),
     cmd(T, S2);
 cmd([#change_sock_opts{active = Active, reuseaddr = Reuseaddr, nodelay = Nodelay, ifaddr = Ifaddr} | T], #state{stage = _} = S) ->
     S2 = change_sopts([Ifaddr, binary, {packet, raw}, {active, Active}, {reuseaddr, Reuseaddr}, {nodelay, Nodelay}], S),
@@ -586,7 +590,7 @@ cmd([#read_register{type = holding} | T], #state{stage = init} = S) ->
 cmd([#read_register{type = holding} | T], #state{stage = disconnect} = S) ->
     cmd_disconnect(S#state.mod, socket_closed, T, S);
 cmd([#read_register{type = holding} | T], #state{stage = stop, sock_info = #sock_info{socket = undefined}} = S) ->
-    cmd_disconnect(S#state.mod, socket_closed, T, S);
+    cmd_stop_disconnect(S#state.mod, socket_closed, T, S);
 cmd([#read_register{type = holding, device_number = Dev_num, register_number = Reg_num, quantity = Quantity} | T], #state{stage = stop} = S) ->
     read_hregs(T, {Dev_num, Reg_num, Quantity}, S);
 cmd([#read_register{type = holding, device_number = Dev_num, register_number = Reg_num, quantity = Quantity} | T], #state{stage = connect} = S) ->
@@ -597,7 +601,7 @@ cmd([#read_register{type = input} | T], #state{stage = init} = S) ->
 cmd([#read_register{type = input} | T], #state{stage = disconnect} = S) ->
     cmd_disconnect(S#state.mod, socket_closed, T, S);
 cmd([#read_register{type = input} | T], #state{stage = stop, sock_info = #sock_info{socket = undefined}} = S) ->
-    cmd_disconnect(S#state.mod, socket_closed, T, S);
+    cmd_stop_disconnect(S#state.mod, socket_closed, T, S);
 cmd([#read_register{type = input, device_number = Dev_num, register_number = Reg_num, quantity = Quantity} | T], #state{stage = stop} = S) ->
     read_iregs(T, {Dev_num, Reg_num, Quantity}, S);
 cmd([#read_register{type = input, device_number = Dev_num, register_number = Reg_num, quantity = Quantity} | T], #state{stage = connect} = S) ->
@@ -608,9 +612,7 @@ cmd([#read_status{type = coil} | T], #state{stage = init} = S) ->
 cmd([#read_status{type = coil} | T], #state{stage = disconnect} = S) ->
     cmd_disconnect(S#state.mod, socket_closed, T, S);
 cmd([#read_status{type = coil} | T], #state{stage = stop, sock_info = #sock_info{socket = undefined}} = S) ->
-    cmd_disconnect(S#state.mod, socket_closed, T, S);
-cmd([#read_status{type = coil} | T], #state{sock_info = #sock_info{socket = undefined}} = S) ->
-    cmd_disconnect(S#state.mod, socket_closed, T, S);
+    cmd_stop_disconnect(S#state.mod, socket_closed, T, S);
 cmd([#read_status{type = coil, device_number = Dev_num, register_number = Reg_num, quantity = Quantity} | T], #state{stage = stop} = S) ->
     read_coils(T, {Dev_num, Reg_num, Quantity}, S);
 cmd([#read_status{type = coil, device_number = Dev_num, register_number = Reg_num, quantity = Quantity} | T], #state{stage = connect} = S) ->
@@ -621,9 +623,7 @@ cmd([#read_status{type = input} | T], #state{stage = init} = S) ->
 cmd([#read_status{type = input} | T], #state{stage = disconnect} = S) ->
     cmd_disconnect(S#state.mod, socket_closed, T, S);
 cmd([#read_status{type = input} | T], #state{stage = stop, sock_info = #sock_info{socket = undefined}} = S) ->
-    cmd_disconnect(S#state.mod, socket_closed, T, S);
-cmd([#read_status{type = input} | T], #state{sock_info = #sock_info{socket = undefined}} = S) ->
-    cmd_disconnect(S#state.mod, socket_closed, T, S);
+    cmd_stop_disconnect(S#state.mod, socket_closed, T, S);
 cmd([#read_status{type = input, device_number = Dev_num, register_number = Reg_num, quantity = Quantity} | T], #state{stage = stop} = S) ->
     read_inputs(T, {Dev_num, Reg_num, Quantity}, S);
 cmd([#read_status{type = input, device_number = Dev_num, register_number = Reg_num, quantity = Quantity} | T], #state{stage = connect} = S) ->
@@ -634,9 +634,7 @@ cmd([#write_holding_register{} | T], #state{stage = init} = S) ->
 cmd([#write_holding_register{} | T], #state{stage = disconnect} = S) ->
     cmd_disconnect(S#state.mod, socket_closed, T, S);
 cmd([#write_holding_register{} | T], #state{stage = stop, sock_info = #sock_info{socket = undefined}} = S) ->
-    cmd_disconnect(S#state.mod, socket_closed, T, S);
-cmd([#write_holding_register{} | T], #state{sock_info = #sock_info{socket = undefined}} = S) ->
-    cmd_disconnect(S#state.mod, socket_closed, T, S);
+    cmd_stop_disconnect(S#state.mod, socket_closed, T, S);
 cmd([#write_holding_register{device_number = Dev_num, register_number = Reg_num, register_value = Value} | T], #state{stage = stop} = S) ->
     write_hreg(T, {Dev_num, Reg_num, Value}, S);
 cmd([#write_holding_register{device_number = Dev_num, register_number = Reg_num, register_value = Value} | T], #state{stage = connect} = S) ->
@@ -647,9 +645,7 @@ cmd([#write_holding_registers{} | T], #state{stage = init} = S) ->
 cmd([#write_holding_registers{} | T], #state{stage = disconnect} = S) ->
     cmd_disconnect(S#state.mod, socket_closed, T, S);
 cmd([#write_holding_registers{} | T], #state{stage = stop, sock_info = #sock_info{socket = undefined}} = S) ->
-    cmd_disconnect(S#state.mod, socket_closed, T, S);
-cmd([#write_holding_registers{} | T], #state{sock_info = #sock_info{socket = undefined}} = S) ->
-    cmd_disconnect(S#state.mod, socket_closed, T, S);
+    cmd_stop_disconnect(S#state.mod, socket_closed, T, S);
 cmd([#write_holding_registers{device_number = Dev_num, register_number = Reg_num, registers_value = Values} | T], #state{stage = stop} = S) ->
     write_hregs(T, {Dev_num, Reg_num, Values}, S);
 cmd([#write_holding_registers{device_number = Dev_num, register_number = Reg_num, registers_value = Values} | T], #state{stage = connect} = S) ->
@@ -660,9 +656,7 @@ cmd([#write_coil_status{} | T], #state{stage = init} = S) ->
 cmd([#write_coil_status{} | T], #state{stage = disconnect} = S) ->
     cmd_disconnect(S#state.mod, socket_closed, T, S);
 cmd([#write_coil_status{} | T], #state{stage = stop, sock_info = #sock_info{socket = undefined}} = S) ->
-    cmd_disconnect(S#state.mod, socket_closed, T, S);
-cmd([#write_coil_status{} | T], #state{sock_info = #sock_info{socket = undefined}} = S) ->
-    cmd_disconnect(S#state.mod, socket_closed, T, S);
+    cmd_stop_disconnect(S#state.mod, socket_closed, T, S);
 cmd([#write_coil_status{device_number = Dev_num, register_number = Reg_num, register_value = Value} | T], #state{stage = stop} = S) ->
     write_creg(T, {Dev_num, Reg_num, Value}, S);
 cmd([#write_coil_status{device_number = Dev_num, register_number = Reg_num, register_value = Value} | T], #state{stage = connect} = S) ->
@@ -673,9 +667,7 @@ cmd([#write_coils_status{} | T], #state{stage = init} = S) ->
 cmd([#write_coils_status{} | T], #state{stage = disconnect} = S) ->
     cmd_disconnect(S#state.mod, socket_closed, T, S);
 cmd([#write_coils_status{} | T], #state{stage = stop, sock_info = #sock_info{socket = undefined}} = S) ->
-    cmd_disconnect(S#state.mod, socket_closed, T, S);
-cmd([#write_coils_status{} | T], #state{sock_info = #sock_info{socket = undefined}} = S) ->
-    cmd_disconnect(S#state.mod, socket_closed, T, S);
+    cmd_stop_disconnect(S#state.mod, socket_closed, T, S);
 cmd([#write_coils_status{device_number = Dev_num, register_number = Reg_num, quantity = Quantity, registers_value = Values} | T], #state{stage = stop} = S) ->
     write_cregs(T, {Dev_num, Reg_num, Quantity, Values}, S);
 cmd([#write_coils_status{device_number = Dev_num, register_number = Reg_num, quantity = Quantity, registers_value = Values} | T], #state{stage = connect} = S) ->
@@ -816,7 +808,10 @@ read_hregs(T, {Dev_num, Reg_num, Quantity}, S) ->
             {ok, <<1:16, 0:16, 3:16, Dev_num:8, ?ERR_CODE_READ_HREGS:8, Err_code:8>>} ->
                 Res =
                     try
-                        Mod:message(#read_register{type = holding, device_number = Dev_num, error_code = Err_code}, S#state.state)
+                        Mod:message(#read_register{
+                            type = holding,
+                            device_number = Dev_num,
+                            error_code = Err_code}, S#state.state)
                     catch
                         throw:R -> {ok, R};
                         C:R:Stacktrace -> {'EXIT', C, R, Stacktrace}
