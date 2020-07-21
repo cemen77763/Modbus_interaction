@@ -23,7 +23,8 @@
     ifaddr :: inet | inet6
     }).
 
--record(read_holding_registers, {
+-record(read_register, {
+    type :: holding | input,
     device_number :: integer(),
     register_number :: integer(),
     quantity :: integer(),
@@ -31,23 +32,8 @@
     error_code :: integer()
     }).
 
--record(read_input_registers, {
-    device_number :: integer(),
-    register_number :: integer(),
-    quantity :: integer(),
-    registers_value :: list(),
-    error_code :: integer()
-    }).
-
--record(read_coils_status, {
-    device_number :: integer(),
-    register_number :: integer(),
-    quantity :: integer(),
-    registers_value :: binary(),
-    error_code :: integer()
-    }).
-
--record(read_inputs_status, {
+-record(read_status, {
+    type :: coil | input,
     device_number :: integer(),
     register_number :: integer(),
     quantity :: integer(),

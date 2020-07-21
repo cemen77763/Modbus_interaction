@@ -56,31 +56,34 @@ disconnect(Reason, State) ->
     _Connect = #connect{ip_addr = "localhost", port = 502},
     {ok, [], State}.
 
-message(#read_holding_registers{device_number = Dev_num, register_number = Reg_num, registers_value = Ldata}, State) ->
-    ReadIreg = #read_input_registers{
+message(#read_register{type = holding, device_number = Dev_num, register_number = Reg_num, registers_value = Ldata}, State) ->
+    ReadIreg = #read_register{
+        type = input,
         device_number = 1,
         register_number = 1,
         quantity = 5},
     io:format("~nReading holding registers~ndevice: ~w~nfirst register:~w~ndata: ~w~n~n", [Dev_num, Reg_num, Ldata]),
     {ok, [ReadIreg], State};
 
-message(#read_input_registers{device_number = Dev_num, register_number = Reg_num, registers_value = Ldata}, State) ->
-    ReadCoils = #read_coils_status{
+message(#read_register{type = input, device_number = Dev_num, register_number = Reg_num, registers_value = Ldata}, State) ->
+    ReadCoils = #read_status{
+        type = coil,
         device_number = 1,
         register_number = 2,
         quantity = 3},
     io:format("~nReading input registers~ndevice: ~w~nfirst register: ~w~ndata: ~w~n~n", [Dev_num, Reg_num, Ldata]),
     {ok, [ReadCoils], State};
 
-message(#read_coils_status{device_number = Dev_num, register_number = Reg_num, quantity = _Quantity, registers_value = Bdata}, State) ->
-    ReadInput = #read_inputs_status{
+message(#read_status{type = coil, device_number = Dev_num, register_number = Reg_num, quantity = _Quantity, registers_value = Bdata}, State) ->
+    ReadInput = #read_status{
+        type = input,
         device_number = 1,
         register_number = 12,
         quantity = 5},
     io:format("~nReading coils status~ndevice: ~w~nfirst register: ~w~ndata: ~w~n~n", [Dev_num, Reg_num, Bdata]),
     {ok, [ReadInput], State};
 
-message(#read_inputs_status{device_number = Dev_num, register_number = Reg_num, quantity = _Quantity, registers_value = Bdata}, State) ->
+message(#read_status{type = input, device_number = Dev_num, register_number = Reg_num, quantity = _Quantity, registers_value = Bdata}, State) ->
     _Disconnect = #disconnect{reason = normal},
     io:format("~nReading inputs status~ndevice: ~w~nfirst register: ~w~ndata: ~w~n~n", [Dev_num, Reg_num, Bdata]),
     {ok, [], State};
@@ -111,7 +114,8 @@ message(#write_coil_status{device_number = Dev_num, register_number = Reg_num, r
     {ok, [WriteCoils], State};
 
 message(#write_coils_status{device_number = Dev_num, register_number = Reg_num, quantity = _Quantity, registers_value = Bdata}, State) ->
-    ReadHreg = #read_holding_registers{
+    ReadHreg = #read_register{
+        type = holding,
         device_number = 1,
         register_number = 1,
         quantity = 5},

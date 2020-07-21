@@ -309,7 +309,7 @@ handle_info({tcp, _Socket, <<1:16, 0:16, _:16, Dev_num:8, ?FUN_CODE_READ_HREGS:8
     LData = bin_to_list16(BinData, []),
     Res =
     try
-        Mod:message(#read_holding_registers{device_number = Dev_num, registers_value = LData}, S#state.state)
+        Mod:message(#read_register{type = holding, device_number = Dev_num, registers_value = LData}, S#state.state)
     catch
         throw:R -> {ok, R};
         C:R:Stacktrace -> {'EXIT', C, R, Stacktrace}
@@ -321,7 +321,7 @@ handle_info({tcp, _Socket, <<1:16, 0:16, 5:16, Dev_num:8, ?FUN_CODE_READ_IREGS:8
     LData = bin_to_list16(BinData, []),
     Res =
     try
-        Mod:message(#read_input_registers{device_number = Dev_num, registers_value = LData}, S#state.state)
+        Mod:message(#read_register{type = input, device_number = Dev_num, registers_value = LData}, S#state.state)
     catch
         throw:R -> {ok, R};
         C:R:Stacktrace -> {'EXIT', C, R, Stacktrace}
@@ -332,7 +332,7 @@ handle_info({tcp, _Socket, <<1:16, 0:16, 4:16, Dev_num:8, ?FUN_CODE_READ_COILS:8
     Mod = S#state.mod,
     Res =
     try
-        Mod:message(#read_coils_status{device_number = Dev_num, registers_value = Bdata}, S#state.state)
+        Mod:message(#read_status{type = coil, device_number = Dev_num, registers_value = Bdata}, S#state.state)
     catch
         throw:R -> {ok, R};
         C:R:Stacktrace -> {'EXIT', C, R, Stacktrace}
@@ -343,7 +343,7 @@ handle_info({tcp, _Socket, <<1:16, 0:16, 4:16, Dev_num:8, ?FUN_CODE_READ_INPUTS:
     Mod = S#state.mod,
     Res =
     try
-        Mod:message(#read_inputs_status{device_number = Dev_num, registers_value = Bdata}, S#state.state)
+        Mod:message(#read_status{type = input, device_number = Dev_num, registers_value = Bdata}, S#state.state)
     catch
         throw:R -> {ok, R};
         C:R:Stacktrace -> {'EXIT', C, R, Stacktrace}
@@ -398,7 +398,7 @@ handle_info({tcp, _Socket, <<1:16, 0:16, 3:16, Dev_num:8, ?ERR_CODE_READ_HREGS:8
     Mod = S#state.mod,
     Res =
     try
-        Mod:message(#read_holding_registers{device_number = Dev_num, error_code = Err_code}, S#state.state)
+        Mod:message(#read_register{type = holding, device_number = Dev_num, error_code = Err_code}, S#state.state)
     catch
         throw:R -> {ok, R};
         C:R:Stacktrace -> {'EXIT', C, R, Stacktrace}
@@ -409,7 +409,7 @@ handle_info({tcp, _Socket, <<1:16, 0:16, 3:16, Dev_num:8, ?ERR_CODE_READ_IREGS:8
     Mod = S#state.mod,
     Res =
     try
-        Mod:message(#read_input_registers{device_number = Dev_num, error_code = Err_code}, S#state.state)
+        Mod:message(#read_register{type = input, device_number = Dev_num, error_code = Err_code}, S#state.state)
     catch
         throw:R -> {ok, R};
         C:R:Stacktrace -> {'EXIT', C, R, Stacktrace}
@@ -420,7 +420,7 @@ handle_info({tcp, _Socket, <<1:16, 0:16, 3:16, Dev_num:8, ?ERR_CODE_READ_COILS:8
     Mod = S#state.mod,
     Res =
     try
-        Mod:message(#read_coils_status{device_number = Dev_num, error_code = Err_code}, S#state.state)
+        Mod:message(#read_status{type = coil, device_number = Dev_num, error_code = Err_code}, S#state.state)
     catch
         throw:R -> {ok, R};
         C:R:Stacktrace -> {'EXIT', C, R, Stacktrace}
@@ -431,7 +431,7 @@ handle_info({tcp, _Socket, <<1:16, 0:16, 3:16, Dev_num:8, ?ERR_CODE_READ_INPUTS:
     Mod = S#state.mod,
     Res =
     try
-        Mod:message(#read_inputs_status{device_number = Dev_num, error_code = Err_code}, S#state.state)
+        Mod:message(#read_status{type = input, device_number = Dev_num, error_code = Err_code}, S#state.state)
     catch
         throw:R -> {ok, R};
         C:R:Stacktrace -> {'EXIT', C, R, Stacktrace}
@@ -581,52 +581,52 @@ cmd([#disconnect{reason = Reason} | T], #state{stage = stop} = S) ->
 cmd([#disconnect{} | T], #state{stage = _} = S) ->
     cmd(T, S);
 
-cmd([#read_holding_registers{} | T], #state{stage = init} = S) ->
+cmd([#read_register{type = holding} | T], #state{stage = init} = S) ->
     cmd(T, S);
-cmd([#read_holding_registers{} | T], #state{stage = disconnect} = S) ->
+cmd([#read_register{type = holding} | T], #state{stage = disconnect} = S) ->
     cmd_disconnect(S#state.mod, socket_closed, T, S);
-cmd([#read_holding_registers{} | T], #state{stage = stop, sock_info = #sock_info{socket = undefined}} = S) ->
+cmd([#read_register{type = holding} | T], #state{stage = stop, sock_info = #sock_info{socket = undefined}} = S) ->
     cmd_disconnect(S#state.mod, socket_closed, T, S);
-cmd([#read_holding_registers{device_number = Dev_num, register_number = Reg_num, quantity = Quantity} | T], #state{stage = stop} = S) ->
+cmd([#read_register{type = holding, device_number = Dev_num, register_number = Reg_num, quantity = Quantity} | T], #state{stage = stop} = S) ->
     read_hregs(T, {Dev_num, Reg_num, Quantity}, S);
-cmd([#read_holding_registers{device_number = Dev_num, register_number = Reg_num, quantity = Quantity} | T], #state{stage = connect} = S) ->
+cmd([#read_register{type = holding, device_number = Dev_num, register_number = Reg_num, quantity = Quantity} | T], #state{stage = connect} = S) ->
     read_hregs(T, {Dev_num, Reg_num, Quantity}, S);
 
-cmd([#read_input_registers{} | T], #state{stage = init} = S) ->
+cmd([#read_register{type = input} | T], #state{stage = init} = S) ->
     cmd(T, S);
-cmd([#read_input_registers{} | T], #state{stage = disconnect} = S) ->
+cmd([#read_register{type = input} | T], #state{stage = disconnect} = S) ->
     cmd_disconnect(S#state.mod, socket_closed, T, S);
-cmd([#read_input_registers{} | T], #state{stage = stop, sock_info = #sock_info{socket = undefined}} = S) ->
+cmd([#read_register{type = input} | T], #state{stage = stop, sock_info = #sock_info{socket = undefined}} = S) ->
     cmd_disconnect(S#state.mod, socket_closed, T, S);
-cmd([#read_input_registers{device_number = Dev_num, register_number = Reg_num, quantity = Quantity} | T], #state{stage = stop} = S) ->
+cmd([#read_register{type = input, device_number = Dev_num, register_number = Reg_num, quantity = Quantity} | T], #state{stage = stop} = S) ->
     read_iregs(T, {Dev_num, Reg_num, Quantity}, S);
-cmd([#read_input_registers{device_number = Dev_num, register_number = Reg_num, quantity = Quantity} | T], #state{stage = connect} = S) ->
+cmd([#read_register{type = input, device_number = Dev_num, register_number = Reg_num, quantity = Quantity} | T], #state{stage = connect} = S) ->
     read_iregs(T, {Dev_num, Reg_num, Quantity}, S);
 
-cmd([#read_coils_status{} | T], #state{stage = init} = S) ->
+cmd([#read_status{type = coil} | T], #state{stage = init} = S) ->
     cmd(T, S);
-cmd([#read_coils_status{} | T], #state{stage = disconnect} = S) ->
+cmd([#read_status{type = coil} | T], #state{stage = disconnect} = S) ->
     cmd_disconnect(S#state.mod, socket_closed, T, S);
-cmd([#read_coils_status{} | T], #state{stage = stop, sock_info = #sock_info{socket = undefined}} = S) ->
+cmd([#read_status{type = coil} | T], #state{stage = stop, sock_info = #sock_info{socket = undefined}} = S) ->
     cmd_disconnect(S#state.mod, socket_closed, T, S);
-cmd([#read_coils_status{} | T], #state{sock_info = #sock_info{socket = undefined}} = S) ->
+cmd([#read_status{type = coil} | T], #state{sock_info = #sock_info{socket = undefined}} = S) ->
     cmd_disconnect(S#state.mod, socket_closed, T, S);
-cmd([#read_coils_status{device_number = Dev_num, register_number = Reg_num, quantity = Quantity} | T], #state{stage = stop} = S) ->
+cmd([#read_status{type = coil, device_number = Dev_num, register_number = Reg_num, quantity = Quantity} | T], #state{stage = stop} = S) ->
     read_coils(T, {Dev_num, Reg_num, Quantity}, S);
-cmd([#read_coils_status{device_number = Dev_num, register_number = Reg_num, quantity = Quantity} | T], #state{stage = connect} = S) ->
+cmd([#read_status{type = coil, device_number = Dev_num, register_number = Reg_num, quantity = Quantity} | T], #state{stage = connect} = S) ->
     read_coils(T, {Dev_num, Reg_num, Quantity}, S);
 
-cmd([#read_inputs_status{} | T], #state{stage = init} = S) ->
+cmd([#read_status{type = input} | T], #state{stage = init} = S) ->
     cmd(T, S);
-cmd([#read_inputs_status{} | T], #state{stage = disconnect} = S) ->
+cmd([#read_status{type = input} | T], #state{stage = disconnect} = S) ->
     cmd_disconnect(S#state.mod, socket_closed, T, S);
-cmd([#read_inputs_status{} | T], #state{stage = stop, sock_info = #sock_info{socket = undefined}} = S) ->
+cmd([#read_status{type = input} | T], #state{stage = stop, sock_info = #sock_info{socket = undefined}} = S) ->
     cmd_disconnect(S#state.mod, socket_closed, T, S);
-cmd([#read_inputs_status{} | T], #state{sock_info = #sock_info{socket = undefined}} = S) ->
+cmd([#read_status{type = input} | T], #state{sock_info = #sock_info{socket = undefined}} = S) ->
     cmd_disconnect(S#state.mod, socket_closed, T, S);
-cmd([#read_inputs_status{device_number = Dev_num, register_number = Reg_num, quantity = Quantity} | T], #state{stage = stop} = S) ->
+cmd([#read_status{type = input, device_number = Dev_num, register_number = Reg_num, quantity = Quantity} | T], #state{stage = stop} = S) ->
     read_inputs(T, {Dev_num, Reg_num, Quantity}, S);
-cmd([#read_inputs_status{device_number = Dev_num, register_number = Reg_num, quantity = Quantity} | T], #state{stage = connect} = S) ->
+cmd([#read_status{type = input, device_number = Dev_num, register_number = Reg_num, quantity = Quantity} | T], #state{stage = connect} = S) ->
     read_inputs(T, {Dev_num, Reg_num, Quantity}, S);
 
 cmd([#write_holding_register{} | T], #state{stage = init} = S) ->
@@ -794,11 +794,13 @@ read_hregs(T, {Dev_num, Reg_num, Quantity}, S) ->
                 LData = bin_to_list16(BinData, []),
                 Res =
                 try
-                    Mod:message(#read_holding_registers{device_number = Dev_num,
-                    register_number = Reg_num,
-                    quantity = Quantity,
-                    registers_value = LData
-                    }, S#state.state)
+                    Mod:message(#read_register{
+                        type = holding,
+                        device_number = Dev_num,
+                        register_number = Reg_num,
+                        quantity = Quantity,
+                        registers_value = LData
+                        }, S#state.state)
                 catch
                     throw:R -> {ok, R};
                     C:R:Stacktrace -> {'EXIT', C, R, Stacktrace}
@@ -814,7 +816,7 @@ read_hregs(T, {Dev_num, Reg_num, Quantity}, S) ->
             {ok, <<1:16, 0:16, 3:16, Dev_num:8, ?ERR_CODE_READ_HREGS:8, Err_code:8>>} ->
                 Res =
                     try
-                        Mod:message(#read_holding_registers{device_number = Dev_num, error_code = Err_code}, S#state.state)
+                        Mod:message(#read_register{type = holding, device_number = Dev_num, error_code = Err_code}, S#state.state)
                     catch
                         throw:R -> {ok, R};
                         C:R:Stacktrace -> {'EXIT', C, R, Stacktrace}
@@ -863,7 +865,8 @@ read_iregs(T, {Dev_num, Reg_num, Quantity}, S) ->
                     LData = bin_to_list16(BinData, []),
                     Res =
                     try
-                        Mod:message(#read_input_registers{
+                        Mod:message(#read_register{
+                            type = input,
                             device_number = Dev_num,
                             register_number = Reg_num,
                             quantity = Quantity,
@@ -884,7 +887,7 @@ read_iregs(T, {Dev_num, Reg_num, Quantity}, S) ->
                 {ok, <<1:16, 0:16, 3:16, Dev_num:8, ?ERR_CODE_READ_IREGS:8, Err_code:8>>} ->
                     Res =
                     try
-                        Mod:message(#read_input_registers{device_number = Dev_num, error_code = Err_code}, S#state.state)
+                        Mod:message(#read_register{type = input, device_number = Dev_num, error_code = Err_code}, S#state.state)
                     catch
                         throw:R -> {ok, R};
                         C:R:Stacktrace -> {'EXIT', C, R, Stacktrace}
@@ -933,7 +936,8 @@ read_coils(T, {Dev_num, Reg_num, Quantity}, S) ->
                 {ok, <<1:16, 0:16, 4:16, Dev_num:8, ?FUN_CODE_READ_COILS:8, Bdata/binary>>} ->
                     Res =
                     try
-                        Mod:message(#read_coils_status{
+                        Mod:message(#read_status{
+                            type = coil,
                             device_number = Dev_num,
                             register_number = Reg_num,
                             quantity = Quantity,
@@ -954,7 +958,7 @@ read_coils(T, {Dev_num, Reg_num, Quantity}, S) ->
                 {ok, <<1:16, 0:16, 3:16, Dev_num:8, ?ERR_CODE_READ_COILS:8, Err_code:8>>} ->
                     Res =
                     try
-                        Mod:message(#read_coils_status{device_number = Dev_num, error_code = Err_code}, S#state.state)
+                        Mod:message(#read_status{type = coil, device_number = Dev_num, error_code = Err_code}, S#state.state)
                     catch
                         throw:R -> {ok, R};
                         C:R:Stacktrace -> {'EXIT', C, R, Stacktrace}
@@ -1003,7 +1007,8 @@ read_inputs(T, {Dev_num, Reg_num, Quantity}, S) ->
                 {ok, <<1:16, 0:16, 4:16, Dev_num:8, ?FUN_CODE_READ_INPUTS:8, Bdata/binary>>} ->
                     Res =
                     try
-                        Mod:message(#read_inputs_status{
+                        Mod:message(#read_status{
+                            type = input,
                             device_number = Dev_num,
                             register_number = Reg_num,
                             quantity = Quantity,
@@ -1024,7 +1029,7 @@ read_inputs(T, {Dev_num, Reg_num, Quantity}, S) ->
                 {ok, <<1:16, 0:16, 3:16, Dev_num:8, ?ERR_CODE_READ_INPUTS:8, Err_code:8>>} ->
                     Res =
                     try
-                        Mod:message(#read_inputs_status{device_number = Dev_num, error_code = Err_code}, S#state.state)
+                        Mod:message(#read_status{type = input, device_number = Dev_num, error_code = Err_code}, S#state.state)
                     catch
                         throw:R -> {ok, R};
                         C:R:Stacktrace -> {'EXIT', C, R, Stacktrace}
