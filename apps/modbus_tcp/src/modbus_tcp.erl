@@ -6,7 +6,7 @@
 
 -behaviour(gen_modbus).
 
--include_lib("gen_modbus/include/gen_modbus.hrl").
+-include_lib("../../gen_modbus/include/gen_modbus.hrl").
 
 -export([
     start/0,
@@ -36,14 +36,14 @@ stop() ->
 
 init([]) ->
     ChangeSopts = #change_sock_opts{active = true, reuseaddr = true, nodelay = true},
-    Connect = #connect{ip_addr = "localhost", port = 502},
+    Connect = #connect{ip_addr = "localhost", port = 5000},
     {ok, [ChangeSopts, Connect], 5}.
 
 connect(#sock_info{ip_addr = Ip_addr, port = Port}, State) ->
     WriteHreg = #write_holding_register{
-        device_number = 1,
+        device_number = 2,
         register_number = 1,
-        register_value = 15
+        register_value = 12
         },
     io:format("Connection fine Ip addr: ~w Port ~w~n", [Ip_addr, Port]),
     {ok, [WriteHreg], State};
@@ -53,13 +53,14 @@ connect(_sock_info, State) ->
 
 disconnect(Reason, State) ->
     io:format("Disconected because ~w.~n", [Reason]),
-    _Connect = #connect{ip_addr = "localhost", port = 502},
+    _Connect = #connect{ip_addr = "localhost", port = 5000},
+    _Disconnect = #disconnect{reason = normal},
     {ok, [], State}.
 
 message(#read_register{type = holding, device_number = Dev_num, register_number = Reg_num, registers_value = Ldata}, State) ->
     ReadIreg = #read_register{
         type = input,
-        device_number = 1,
+        device_number = 2,
         register_number = 1,
         quantity = 5},
     io:format("~nReading holding registers~ndevice: ~w~nfirst register:~w~ndata: ~w~n~n", [Dev_num, Reg_num, Ldata]),
@@ -68,29 +69,29 @@ message(#read_register{type = holding, device_number = Dev_num, register_number 
 message(#read_register{type = input, device_number = Dev_num, register_number = Reg_num, registers_value = Ldata}, State) ->
     ReadCoils = #read_status{
         type = coil,
-        device_number = 1,
-        register_number = 2,
-        quantity = 3},
+        device_number = 2,
+        register_number = 1,
+        quantity = 5},
     io:format("~nReading input registers~ndevice: ~w~nfirst register: ~w~ndata: ~w~n~n", [Dev_num, Reg_num, Ldata]),
     {ok, [ReadCoils], State};
 
 message(#read_status{type = coil, device_number = Dev_num, register_number = Reg_num, quantity = _Quantity, registers_value = Bdata}, State) ->
     ReadInput = #read_status{
         type = input,
-        device_number = 1,
+        device_number = 2,
         register_number = 12,
         quantity = 5},
     io:format("~nReading coils status~ndevice: ~w~nfirst register: ~w~ndata: ~w~n~n", [Dev_num, Reg_num, Bdata]),
     {ok, [ReadInput], State};
 
 message(#read_status{type = input, device_number = Dev_num, register_number = Reg_num, quantity = _Quantity, registers_value = Bdata}, State) ->
-    _Disconnect = #disconnect{reason = normal},
+    Disconnect = #disconnect{reason = normal},
     io:format("~nReading inputs status~ndevice: ~w~nfirst register: ~w~ndata: ~w~n~n", [Dev_num, Reg_num, Bdata]),
-    {ok, [], State};
+    {ok, [Disconnect], State};
 
 message(#write_holding_register{device_number = Dev_num, register_number = Reg_num, register_value = Ldata}, State) ->
     WriteHregs = #write_holding_registers{
-        device_number = 1,
+        device_number = 2,
         register_number = 2,
         registers_value = [13, 14, 15, 16]},
     io:format("~nWriting holding register~ndevice: ~w~nfirst register: ~w~ndata: ~w~n~n", [Dev_num, Reg_num, Ldata]),
@@ -98,7 +99,7 @@ message(#write_holding_register{device_number = Dev_num, register_number = Reg_n
 
 message(#write_holding_registers{device_number = Dev_num, register_number = Reg_num, registers_value = Ldata}, State) ->
     WriteCoil = #write_coil_status{
-        device_number = 1,
+        device_number = 2,
         register_number = 1,
         register_value = 1},
     io:format("~nWriting holding registers~ndevice: ~w~nfirst register: ~w~ndata: ~w~n~n", [Dev_num, Reg_num, Ldata]),
@@ -106,17 +107,17 @@ message(#write_holding_registers{device_number = Dev_num, register_number = Reg_
 
 message(#write_coil_status{device_number = Dev_num, register_number = Reg_num, register_value = Data}, State) ->
     WriteCoils = #write_coils_status{
-        device_number = 1,
-        register_number = 1,
-        quantity = 1,
-        registers_value = 1},
+        device_number = 2,
+        register_number = 2,
+        quantity = 4,
+        registers_value = 2#1010},
     io:format("~nWriting coil status~ndevice: ~w~nfirst register: ~w~ndata: ~w~n~n", [Dev_num, Reg_num, Data]),
     {ok, [WriteCoils], State};
 
 message(#write_coils_status{device_number = Dev_num, register_number = Reg_num, quantity = _Quantity, registers_value = Bdata}, State) ->
     ReadHreg = #read_register{
         type = holding,
-        device_number = 1,
+        device_number = 2,
         register_number = 1,
         quantity = 5},
     io:format("~nWriting coils status~ndevice: ~w~nfirst register: ~w~ndata: ~w~n~n", [Dev_num, Reg_num, Bdata]),

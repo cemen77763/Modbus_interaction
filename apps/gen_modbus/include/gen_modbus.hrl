@@ -1,15 +1,15 @@
 
-%%% ------------------------- COMMANDS RECORDS -------------------------
 -record(sock_info, {
-    socket = undefined,
-    connection = close,
-    ip_addr = "localhost",
-    port = 502
+    socket :: gen_tcp:socket(),
+    connection :: close | open,
+    ip_addr :: inet:socket_address() | inet:hostname(),
+    port :: inet:port_number()
     }).
 
+%%% ------------------------- COMMANDS RECORDS -------------------------
 -record(connect, {
-    ip_addr :: tuple(),
-    port :: integer()
+    ip_addr :: inet:socket_address() | inet:hostname(),
+    port :: inet:port_number()
     }).
 
 -record(disconnect, {
@@ -17,7 +17,7 @@
     }).
 
 -record(change_sock_opts, {
-    active :: boolean(),
+    active :: true | false | once | -32768..32767,
     reuseaddr :: boolean(),
     nodelay :: boolean(),
     ifaddr :: inet | inet6
@@ -25,6 +25,7 @@
 
 -record(read_register, {
     type :: holding | input,
+    transaction_id = 1,
     device_number :: integer(),
     register_number :: integer(),
     quantity :: integer(),
@@ -34,6 +35,7 @@
 
 -record(read_status, {
     type :: coil | input,
+    transaction_id = 1,
     device_number :: integer(),
     register_number :: integer(),
     quantity :: integer(),
@@ -42,6 +44,7 @@
     }).
 
 -record(write_holding_register, {
+    transaction_id = 1,
     device_number :: integer(),
     register_number :: integer(),
     register_value :: number(),
@@ -49,6 +52,7 @@
     }).
 
 -record(write_holding_registers, {
+    transaction_id = 1,
     device_number :: integer(),
     register_number :: integer(),
     registers_value :: list(),
@@ -56,6 +60,7 @@
     }).
 
 -record(write_coil_status, {
+    transaction_id = 1,
     device_number :: integer(),
     register_number :: integer(),
     register_value :: 0 | 1,
@@ -63,6 +68,7 @@
     }).
 
 -record(write_coils_status, {
+    transaction_id = 1,
     device_number :: integer(),
     register_number :: integer(),
     quantity :: integer(),

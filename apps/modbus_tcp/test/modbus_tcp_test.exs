@@ -1,28 +1,31 @@
 defmodule ModbusTcpTest do
     use ExUnit.Case
     require Record
-    Record.defrecord(:read_holding_registers,
+    Record.defrecord(:disconnect,
+        reason: :normal)
+
+    Record.defrecord(:connect,
+        ip_addr: 'localhost',
+        port: 502)
+
+    Record.defrecord(:change_sock_opts,
+        active: :true,
+        reuseaddr: :false,
+        nodelay: :true,
+        ifaddr: :inet)
+
+    Record.defrecord(:read_register,
+        type: :undefined,
+        transaction_id: 1,
         device_number: 1,
         register_number: 2,
         quantity: 5,
         registers_value: [1, 4],
         error_code: :undefined)
 
-    Record.defrecord(:read_input_registers,
-        device_number: 5,
-        register_number: 2,
-        quantity: 5,
-        registers_value: [1, 4],
-        error_code: :undefined)
-
-    Record.defrecord(:read_coils_status,
-        device_number: 5,
-        register_number: 2,
-        quantity: 5,
-        registers_value: [1, 4],
-        error_code: :undefined)
-
-    Record.defrecord(:read_inputs_status,
+    Record.defrecord(:read_status,
+        type: :undefined,
+        transaction_id: 1,
         device_number: 5,
         register_number: 2,
         quantity: 5,
@@ -65,20 +68,15 @@ defmodule ModbusTcpTest do
         assert :modbus_tcp.disconnect(:normal, 5) == {:ok, [], 5}
     end
 
-    test "test handle call" do
+    test "test handle" do
         assert :modbus_tcp.handle_call(:msg, self(), 5) == {:reply, :msg, [], 5}
-    end
-
-    test "test handle continue" do
         assert :modbus_tcp.handle_continue(:msg, 5) == {:noreply, [], 5}
-    end
-
-    test "test handle info" do
         assert :modbus_tcp.handle_info(:msg, 5) == {:noreply, [], 5}
+        assert :modbus_tcp.handle_cast(:msg, 5) == {:noreply, [], 5}
     end
 
-    test "test handle cast" do
-        assert :modbus_tcp.handle_cast(:msg, 5) == {:noreply, [], 5}
+    test "message" do
+        assert :modbus_tcp.message(read_register(type: :holding, transaction_id: 1), 5) == {:ok, [read_register(type: :input, device_number: 2, register_number: 1, quantity: 5, registers_value: :undefined)], 5}
     end
 
     test "stop gen_modbus" do
