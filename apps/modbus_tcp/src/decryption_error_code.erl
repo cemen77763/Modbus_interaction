@@ -1,12 +1,11 @@
 %%% ----------------------------------------------------------------------------------------- %%%
-%%% @doc Decrypt error code recived from Modbus TCP devices                                   %%%
+%%% @doc Decrypt error code recived from Modbus TCP slave devices                                   %%%
 %%% @end                                                                                      %%%
 %%% ----------------------------------------------------------------------------------------- %%%
 
 -module(decryption_error_code).
 
 -export([decrypt/1]).
-
 
 decrypt(16#01) ->
     error_logger:error_msg("Error code: the accepted function code cannot be processed.");

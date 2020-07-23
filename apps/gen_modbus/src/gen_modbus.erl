@@ -1,5 +1,5 @@
 %%% -----------------------------------------------------------------------------------------
-%%% @doc behaviour to interact with modbus TCP devices
+%%% @doc Behaviour to interact with modbus TCP devices
 %%% @end
 %%% -----------------------------------------------------------------------------------------
 -module(gen_modbus).
@@ -33,7 +33,7 @@
 -define(DEFAULT_SOCK_OPTS, [
     inet,
     binary,
-    {active, false},
+    {active, true},
     {packet, raw},
     {reuseaddr, true},
     {nodelay, true}
@@ -44,11 +44,9 @@
     mod :: atom(),
     sock_info = #sock_info{},
     sock_opts = ?DEFAULT_SOCK_OPTS,
-    stream = waiting,
+    stream = {waiting, <<>>},
     stage = init
     }).
-
--type cmd() :: record:records().
 
 -type netinfo() :: [gen_tcp:connect_option()].
 
@@ -243,182 +241,6 @@ handle_call(Request, From, S) ->
             erlang:raise(Class, Reason, Strace)
     end.
 
-data_id(Data, Acc) ->
-    <<TransId:16, Other/binary>> = Data,
-    case Other of
-        <<>> -> {transaction, <<Acc/binary, Data/binary>>};
-        _ -> data_protocol(Other, <<Acc/binary, TransId:16>>)
-    end.
-
-data_protocol(Data, Acc) ->
-    <<0:16, Other/binary>> = Data,
-    case Other of
-        <<>> -> {protocol, <<Acc/binary, Data/binary>>};
-        _ -> data_msglen(Other, <<Acc/binary, 0:16>>)
-    end.
-
-data_msglen(Data, Acc) ->
-    <<MsgLen:16, Other/binary>> = Data,
-    case Other of
-        <<>> -> {msglen, <<Acc/binary, Data/binary>>};
-        _ -> data_dev(Other, <<Acc/binary, MsgLen:16>>)
-    end.
-
-data_dev(Data, Acc) ->
-    <<Dev_num:8, Other/binary>> = Data,
-    case Other of
-        <<>> -> {dev_num, <<Acc/binary, Data/binary>>};
-        _ -> data_funcode(Other, <<Acc/binary, Dev_num:8>>)
-    end.
-
-data_funcode(Data, Acc) ->
-    <<Fun_code:8, Other/binary>> = Data,
-    case Other of
-        <<>> -> {Fun_code, <<Acc/binary, Data/binary>>};
-        _ -> reg_action(Fun_code, Other, <<Acc/binary, Fun_code:8>>)
-    end.
-
-reg_action(Fun_code, Data, Acc) ->
-    case Fun_code of
-        ?FUN_CODE_WRITE_HREGS ->
-            <<_:32, MsgLen:16, _/binary>> = Acc,
-            Len = (MsgLen - 2) * 4,
-            <<Reg_addr:Len, Other:Len>> = Data,
-            case Other of
-                <<>> ->
-                    {reg_addr, <<Acc/binary, Reg_addr:16>>};
-                _ ->
-                    {write_hregs, <<Acc/binary, Data/binary>>}
-            end;
-        ?FUN_CODE_READ_COILS ->
-            <<_:32, MsgLen:16, _/binary>> = Acc,
-            Len = MsgLen - 3,
-            Dlen = Len * 8,
-            <<Len:8, Other:Dlen>> = Data,
-            case Other of
-                <<>> ->
-                    {reg_addr, <<Acc/binary, Len:16>>};
-                _ ->
-                    {read_coils, <<Acc/binary, Data/binary>>}
-            end;
-        ?FUN_CODE_WRITE_HREG ->
-            <<_:32, MsgLen:16, _/binary>> = Acc,
-            Len = (MsgLen - 2) * 4,
-            <<Reg_addr:Len, Other:Len>> = Data,
-            case Other of
-                <<>> ->
-                    {reg_addr, <<Acc/binary, Reg_addr:16>>};
-                _ ->
-                    {write_hreg, <<Acc/binary, Data/binary>>}
-            end
-    end.
-
-reg_addr(Fun_code, Data, Acc) ->
-    case Fun_code of
-        ?FUN_CODE_READ_COILS ->
-            <<_:32, MsgLen:16, _/binary>> = Acc,
-            Len = (MsgLen - 3) * 8,
-            <<Other:Len>> = Data,
-            case Other of
-                <<>> ->
-                    {reg_addr, Acc};
-                _ ->
-                    {read_coils, <<Acc/binary, Data/binary>>}
-            end;
-        ?FUN_CODE_WRITE_HREG ->
-            <<Other:16>> = Data,
-            case Other of
-                <<>> ->
-                    {reg_addr, Acc};
-                _ ->
-                    {write_hreg, <<Acc/binary, Data/binary>>}
-            end
-    end.
-
-handle_cast({stream, Data}, S) ->
-    io:format("received~n"),
-    Res =
-    case S#state.stream of
-        waiting ->
-            data_id(Data, <<>>);
-        {transaction, Other} ->
-            data_protocol(Data, Other);
-        {protocol, Other} ->
-            data_msglen(Data, Other);
-        {msglen, Other} ->
-            data_dev(Data, Other);
-        {dev_num, Other} ->
-            data_funcode(Data, Other);
-        {fun_code, Fun_codes, Other} ->
-            reg_action(Fun_codes, Data, Other);
-        {reg_addr, Fun_codes, Other} ->
-            reg_addr(Fun_codes, Data, Other);
-        Bdata ->
-            Bdata
-    end,
-    case Res of
-        {transaction, Resdata} ->
-            {noreply, S#state{stream = {transaction, Resdata}}};
-        {protocol, Resdata} ->
-            {noreply, S#state{stream = {protocol, Resdata}}};
-        {msglen, <<_:32, MsgLen:16>> = Resdata} ->
-            {noreply, S#state{stream = {msglen, MsgLen, Resdata}}};
-        {dev_num, <<_:32, MsgLen:16, _:8>> = Resdata} ->
-            Len = MsgLen - 1,
-            {noreply, S#state{stream = {dev_num, Len, Resdata}}};
-        {?FUN_CODE_READ_COILS, <<_:56, Fun_code:8>> = Resdata} ->
-            {noreply, S#state{stream = {fun_code, Fun_code, Resdata}}};
-        {?FUN_CODE_READ_HREGS, <<_:56, Fun_code:8>> = Resdata} ->
-            {noreply, S#state{stream = {fun_code, Fun_code, Resdata}}};
-        {?FUN_CODE_READ_INPUTS, <<_:56, Fun_code:8>> = Resdata} ->
-            {noreply, S#state{stream = {fun_code, Fun_code, Resdata}}};
-        {?FUN_CODE_READ_IREGS, <<_:56, Fun_code:8>> = Resdata} ->
-            {noreply, S#state{stream = {fun_code, Fun_code, Resdata}}};
-        {?FUN_CODE_WRITE_COIL, <<_:56, Fun_code:8>> = Resdata} ->
-            {noreply, S#state{stream = {fun_code, Fun_code, Resdata}}};
-        {?FUN_CODE_WRITE_COILS, <<_:56, Fun_code:8>> = Resdata} ->
-            {noreply, S#state{stream = {fun_code, Fun_code, Resdata}}};
-        {?FUN_CODE_WRITE_HREG, <<_:56, Fun_code:8>> = Resdata} ->
-            {noreply, S#state{stream = {fun_code, Fun_code, Resdata}}};
-        {?FUN_CODE_WRITE_HREGS, <<_:56, Fun_code:8>> = Resdata} ->
-            {noreply, S#state{stream = {fun_code, Fun_code, Resdata}}};
-        {reg_addr, <<_:56, Fun_code:8, _:16>> = Resdata} ->
-            {noreply, S#state{stream = {reg_addr, Fun_code, Resdata}}};
-        {write_hreg, ResData} ->
-            <<TransId:16, 0:16, 6:16, Dev_num:8, ?FUN_CODE_WRITE_HREG:8, Reg_num:16, Value:16>> = ResData,
-            Mod = S#state.mod,
-            Re =
-            try
-                Mod:message(#write_holding_register{transaction_id = TransId, device_number = Dev_num, register_number = Reg_num, register_value = Value}, S#state.state)
-            catch
-                throw:R -> {ok, R};
-                C:R:Stacktrace -> {'EXIT', C, R, Stacktrace}
-            end,
-            msg_resp(Re, S#state{stream = waiting});
-        {read_coils, ResData} ->
-            <<TransId:16, 0:16, 4:16, Dev_num:8, ?FUN_CODE_READ_COILS:8, _:8, Bindata/binary>> = ResData,
-            Mod = S#state.mod,
-            Re =
-            try
-                Mod:message(#read_status{type = coil, transaction_id = TransId, device_number = Dev_num, registers_value = Bindata}, S#state.state)
-            catch
-                throw:R -> {ok, R};
-                C:R:Stacktrace -> {'EXIT', C, R, Stacktrace}
-            end,
-            msg_resp(Re, S);
-        {write_hregs, ResData} ->
-            <<TransId:16, 0:16, 6:16, Dev_num:8, ?FUN_CODE_WRITE_HREGS:8, Reg_num:16, _Reg_quantity:16>> = ResData,
-            Mod = S#state.mod,
-            Re =
-            try
-                Mod:message(#write_holding_registers{transaction_id = TransId, device_number = Dev_num, register_number = Reg_num}, S#state.state)
-            catch
-                throw:R -> {ok, R};
-                C:R:Stacktrace -> {'EXIT', C, R, Stacktrace}
-            end,
-            msg_resp(Re, S)
-        end;
-
 handle_cast(Msg, S) ->
     Mod = S#state.mod,
     Res =
@@ -452,6 +274,440 @@ handle_cast(Msg, S) ->
             erlang:raise(Class, Reason, Strace)
     end.
 
+check_id(Data, <<Id:16, Other/binary>>) ->
+    check_protocol(<<Other/binary, Data/binary>>, <<Id:16>>);
+check_id(<<Id:16, Other/binary>>, Acc) ->
+    case Other of
+        <<>> -> {transaction, <<Acc/binary, Id:16>>};
+        _ -> check_protocol(Other, <<Acc/binary, Id:16>>)
+    end;
+check_id(Data, Acc) ->
+    {waiting, <<Acc/binary, Data/binary>>}.
+
+check_protocol(Data, <<Id:16, 0:16, Other/binary>>) ->
+    check_msglen(<<Other/binary, Data/binary>>, <<Id:16, 0:16>>);
+check_protocol(<<0:16, Other/binary>>, Acc) ->
+    case Other of
+        <<>> -> {protocol, <<Acc/binary, 0:16>>};
+        _ -> check_msglen(Other, <<Acc/binary, 0:16>>)
+    end;
+check_protocol(Data, Acc) ->
+    {transaction, <<Acc/binary, Data/binary>>}.
+
+check_msglen(Data, <<Id:16, 0:16, MsgLen:16, Other/binary>>) ->
+    check_dev(<<Other/binary, Data/binary>>, <<Id:16, 0:16, MsgLen:16>>);
+check_msglen(<<MsgLen:16, Other/binary>>, Acc) ->
+    case Other of
+        <<>> -> {msglen, <<Acc/binary, MsgLen:16>>};
+        _ -> check_dev(Other, <<Acc/binary, MsgLen:16>>)
+    end;
+check_msglen(Data, Acc) ->
+    {protocol, <<Acc/binary, Data/binary>>}.
+
+check_dev(Data, <<Id:16, 0:16, MsgLen:16, Dev_num:8, Other/binary>>) ->
+    check_dev(<<Other/binary, Data/binary>>, <<Id:16, 0:16, MsgLen:16, Dev_num:8>>);
+check_dev(<<Dev_num:8, Other/binary>>, Acc) ->
+    case Other of
+        <<>> -> {dev_num, <<Acc/binary, Dev_num:8>>};
+        _ -> check_funcode(Other, <<Acc/binary, Dev_num:8>>)
+    end;
+check_dev(Data, Acc) ->
+    {msglen, <<Acc/binary, Data/binary>>}.
+
+check_funcode(Data, <<Id:16, 0:16, MsgLen:16, Dev_num:8, Fun_code:8, Other/binary>>) ->
+    check_action(Fun_code, <<Other/binary, Data/binary>>, <<Id:16, 0:16, MsgLen:16, Dev_num:8, Fun_code:8>>);
+check_funcode(<<Fun_code:8, Other/binary>>, Acc) ->
+    case Other of
+        <<>> -> {Fun_code, <<Acc/binary, Fun_code:8>>};
+        _ -> check_action(Fun_code, Other, <<Acc/binary, Fun_code:8>>)
+    end;
+check_funcode(Data, Acc) ->
+    {dev_num, <<Acc/binary, Data/binary>>}.
+
+
+check_action(?FUN_CODE_WRITE_HREG, <<_:16, Other/binary>> = Data, <<_:32, MsgLen:16, _/binary>> = Acc) ->
+    Len = (MsgLen - 4) * 8,
+    case Other of
+        <<>> ->
+            {?FUN_CODE_WRITE_HREG, <<Acc/binary, Data/binary>>};
+        <<_:Len>> ->
+            {write_hreg, <<Acc/binary, Data/binary>>};
+        <<_:Len, _/binary>> ->
+            {write_hreg, <<Acc/binary, Data/binary>>};
+        <<_/binary>> ->
+            {?FUN_CODE_WRITE_HREG, <<Acc/binary, Data/binary>>}
+    end;
+check_action(?FUN_CODE_WRITE_HREG, Data, Acc) ->
+    {?FUN_CODE_WRITE_HREG, <<Acc/binary, Data/binary>>};
+
+check_action(?FUN_CODE_WRITE_HREGS, <<_:16, Other/binary>> = Data, <<_:32, MsgLen:16, _/binary>> = Acc) ->
+    Len = (MsgLen - 4) * 8,
+    case Other of
+        <<_:Len>> ->
+            {write_hregs, <<Acc/binary, Data/binary>>};
+        <<_:Len, _/binary>> ->
+            {write_hregs, <<Acc/binary, Data/binary>>};
+        <<_/binary>> ->
+            {?FUN_CODE_WRITE_HREGS, <<Acc/binary, Data/binary>>}
+    end;
+check_action(?FUN_CODE_WRITE_HREGS, Data, Acc) ->
+    {?FUN_CODE_WRITE_HREGS, <<Acc/binary, Data/binary>>};
+
+check_action(?FUN_CODE_WRITE_COIL, <<_:16, Other/binary>> = Data, <<_:32, MsgLen:16, _/binary>> = Acc) ->
+    Len = (MsgLen - 4) * 8,
+    case Other of
+        <<_:Len>> ->
+            {write_coil, <<Acc/binary, Data/binary>>};
+        <<_:Len, _/binary>> ->
+            {write_coil, <<Acc/binary, Data/binary>>};
+        <<_/binary>> ->
+            {?FUN_CODE_WRITE_COIL, <<Acc/binary, Data/binary>>}
+    end;
+check_action(?FUN_CODE_WRITE_COIL, Data, Acc) ->
+    {?FUN_CODE_WRITE_COIL, <<Acc/binary, Data/binary>>};
+
+check_action(?FUN_CODE_WRITE_COILS, <<_:16, Other/binary>> = Data, <<_:32, MsgLen:16, _/binary>> = Acc) ->
+    Len = (MsgLen - 4) * 8,
+    case Other of
+        <<_:Len>> ->
+            {write_coils, <<Acc/binary, Data/binary>>};
+        <<_:Len, _/binary>> ->
+            {write_coils, <<Acc/binary, Data/binary>>};
+        <<_/binary>> ->
+            {?FUN_CODE_WRITE_COILS, <<Acc/binary, Data/binary>>}
+    end;
+check_action(?FUN_CODE_WRITE_COILS, Data, Acc) ->
+    {?FUN_CODE_WRITE_COILS, <<Acc/binary, Data/binary>>};
+
+check_action(?FUN_CODE_READ_IREGS, <<Bquantity:8, Other/binary>> = Data, <<_:32, MsgLen:16, _/binary>> = Acc) ->
+    Bquantity = MsgLen - 3,
+    Len = Bquantity * 8,
+    case Other of
+        <<_:Len>> ->
+            {read_iregs, <<Acc/binary, Data/binary>>};
+        <<_:Len, _/binary>> ->
+            {read_iregs, <<Acc/binary, Data/binary>>};
+        <<_/binary>> ->
+            {?FUN_CODE_READ_IREGS, <<Acc/binary, Data/binary>>}
+    end;
+check_action(?FUN_CODE_READ_IREGS, Data, Acc) ->
+    {?FUN_CODE_READ_IREGS, <<Acc/binary, Data/binary>>};
+
+check_action(?FUN_CODE_READ_HREGS, <<Bquantity:8, Other/binary>> = Data, <<_:32, MsgLen:16, _/binary>> = Acc) ->
+    Bquantity = MsgLen - 3,
+    Len = Bquantity * 8,
+    case Other of
+        <<>> ->
+            {?FUN_CODE_READ_HREGS, <<Acc/binary, Data/binary>>};
+        <<_:Len>> ->
+            {read_hregs, <<Acc/binary, Data/binary>>};
+        <<_:Len, _/binary>> ->
+            {read_hregs, <<Acc/binary, Data/binary>>};
+        <<_/binary>> ->
+            {?FUN_CODE_READ_HREGS, <<Acc/binary, Data/binary>>}
+    end;
+check_action(?FUN_CODE_READ_HREGS, Data, Acc) ->
+    {?FUN_CODE_READ_HREGS, <<Acc/binary, Data/binary>>};
+
+check_action(?FUN_CODE_READ_INPUTS, <<Len:8, Other/binary>> = Data, <<_:32, MsgLen:16, _/binary>> = Acc) ->
+    Len = MsgLen - 3,
+    Dlen = Len * 8,
+    case Other of
+        <<_:Dlen>> ->
+            {read_inputs, <<Acc/binary, Data/binary>>};
+        <<_:Dlen, _/binary>> ->
+            {read_inputs, <<Acc/binary, Data/binary>>};
+        <<_/binary>> ->
+            {?FUN_CODE_READ_INPUTS, <<Acc/binary, Data/binary>>}
+    end;
+check_action(?FUN_CODE_READ_INPUTS, Data, Acc) ->
+    {?FUN_CODE_READ_INPUTS, <<Acc/binary, Data/binary>>};
+
+check_action(?FUN_CODE_READ_COILS, <<Len:8, Other/binary>> = Data, <<_:32, MsgLen:16, _/binary>> = Acc) ->
+    Len = MsgLen - 3,
+    Dlen = Len * 8,
+    case Other of
+        <<_:Dlen>> ->
+            {read_coils, <<Acc/binary, Data/binary>>};
+        <<_:Dlen, _/binary>> ->
+            {read_coils, <<Acc/binary, Data/binary>>};
+        <<_/binary>> ->
+            {?FUN_CODE_READ_COILS, <<Acc/binary, Data/binary>>}
+    end;
+check_action(?FUN_CODE_READ_COILS, Data, Acc) ->
+    {?FUN_CODE_READ_COILS, <<Acc/binary, Data/binary>>};
+
+check_action(?ERR_CODE_READ_IREGS, <<_ErrCode:8, _/binary>> = Data, Acc) ->
+    {err_read_iregs, <<Acc/binary, Data/binary>>};
+check_action(?ERR_CODE_READ_IREGS, Data, Acc) ->
+    {?ERR_CODE_READ_IREGS, <<Acc/binary, Data/binary>>};
+
+check_action(?ERR_CODE_READ_HREGS, <<_ErrCode:8, _/binary>> = Data, Acc) ->
+    {err_read_hregs, <<Acc/binary, Data/binary>>};
+check_action(?ERR_CODE_READ_HREGS, Data, Acc) ->
+    {?ERR_CODE_READ_HREGS, <<Acc/binary, Data/binary>>};
+
+check_action(?ERR_CODE_READ_INPUTS, <<_ErrCode:8, _/binary>> = Data, Acc) ->
+    {err_read_inputs, <<Acc/binary, Data/binary>>};
+check_action(?ERR_CODE_READ_INPUTS, Data, Acc) ->
+    {?ERR_CODE_READ_INPUTS, <<Acc/binary, Data/binary>>};
+
+check_action(?ERR_CODE_READ_COILS, <<_ErrCode:8, _/binary>> = Data, Acc) ->
+    {err_read_coils, <<Acc/binary, Data/binary>>};
+check_action(?ERR_CODE_READ_COILS, Data, Acc) ->
+    {?ERR_CODE_READ_COILS, <<Acc/binary, Data/binary>>};
+
+check_action(?ERR_CODE_WRITE_HREG, <<_ErrCode:8, _/binary>> = Data, Acc) ->
+    {err_write_hreg, <<Acc/binary, Data/binary>>};
+check_action(?ERR_CODE_WRITE_HREG, Data, Acc) ->
+    {?ERR_CODE_WRITE_HREG, <<Acc/binary, Data/binary>>};
+
+check_action(?ERR_CODE_WRITE_HREGS, <<_ErrCode:8, _/binary>> = Data, Acc) ->
+    {err_write_hregs, <<Acc/binary, Data/binary>>};
+check_action(?ERR_CODE_WRITE_HREGS, Data, Acc) ->
+    {?ERR_CODE_WRITE_HREGS, <<Acc/binary, Data/binary>>};
+
+check_action(?ERR_CODE_WRITE_COIL, <<_ErrCode:8, _/binary>> = Data, Acc) ->
+    {err_write_coil, <<Acc/binary, Data/binary>>};
+check_action(?ERR_CODE_WRITE_COIL, Data, Acc) ->
+    {?ERR_CODE_WRITE_COIL, <<Acc/binary, Data/binary>>};
+
+check_action(?ERR_CODE_WRITE_COILS, <<_ErrCode:8, _/binary>> = Data, Acc) ->
+    {err_write_coils, <<Acc/binary, Data/binary>>};
+check_action(?ERR_CODE_WRITE_COILS, Data, Acc) ->
+    {?ERR_CODE_WRITE_COILS, <<Acc/binary, Data/binary>>}.
+
+check_stream(Data, #state{stream = {waiting, Other}}) ->
+    check_id(<<Other/binary, Data/binary>>, <<>>);
+check_stream(Data, #state{stream = {transaction, Other}}) ->
+    check_id(Data, Other);
+check_stream(Data, #state{stream = {protocol, Other}}) ->
+    check_protocol(Data, Other);
+check_stream(Data, #state{stream = {msglen, Other}}) ->
+    check_msglen(Data, Other);
+check_stream(Data, #state{stream = {dev_num, Other}}) ->
+    check_dev(Data, Other);
+check_stream(Data, #state{stream = {fun_code, _Fun_codes, Other}}) ->
+    check_funcode(Data, Other).
+
+action({waiting, ResData}, S) ->
+    {noreply, S#state{stream = {waiting, ResData}}};
+action({transaction, ResData}, S) ->
+    {noreply, S#state{stream = {transaction, ResData}}};
+action({protocol, ResData}, S) ->
+    {noreply, S#state{stream = {protocol, ResData}}};
+action({msglen, Resdata}, S) ->
+    {noreply, S#state{stream = {msglen, Resdata}}};
+action({dev_num, Resdata}, S) ->
+    {noreply, S#state{stream = {dev_num, Resdata}}};
+action({?FUN_CODE_READ_COILS, Resdata}, S) ->
+    {noreply, S#state{stream = {fun_code, ?FUN_CODE_READ_COILS, Resdata}}};
+action({?FUN_CODE_READ_HREGS, Resdata}, S) ->
+    {noreply, S#state{stream = {fun_code, ?FUN_CODE_READ_HREGS, Resdata}}};
+action({?FUN_CODE_READ_INPUTS, Resdata}, S) ->
+    {noreply, S#state{stream = {fun_code, ?FUN_CODE_READ_INPUTS, Resdata}}};
+action({?FUN_CODE_READ_IREGS, Resdata}, S) ->
+    {noreply, S#state{stream = {fun_code, ?FUN_CODE_READ_IREGS, Resdata}}};
+action({?FUN_CODE_WRITE_COIL, Resdata}, S) ->
+    {noreply, S#state{stream = {fun_code, ?FUN_CODE_WRITE_COIL, Resdata}}};
+action({?FUN_CODE_WRITE_COILS, Resdata}, S) ->
+    {noreply, S#state{stream = {fun_code, ?FUN_CODE_WRITE_COILS, Resdata}}};
+action({?FUN_CODE_WRITE_HREG, Resdata}, S) ->
+    {noreply, S#state{stream = {fun_code, ?FUN_CODE_WRITE_HREG, Resdata}}};
+action({?FUN_CODE_WRITE_HREGS, Resdata}, S) ->
+    {noreply, S#state{stream = {fun_code, ?FUN_CODE_WRITE_HREGS, Resdata}}};
+
+action({read_iregs, <<TransId:16, 0:16, MsgLen:16, Dev_num:8, ?FUN_CODE_READ_IREGS:8, _/binary>> = ResData}, S) ->
+    Len = (MsgLen - 3) * 8,
+    <<_:72, BinData:Len, Something/binary>> = ResData,
+    Mod = S#state.mod,
+    LData = bin_to_list16(<<BinData:Len>>, []),
+    Res =
+    try
+        Mod:message(#read_register{type = input, transaction_id = TransId, device_number = Dev_num, registers_value = LData}, S#state.state)
+    catch
+        throw:R -> {ok, R};
+        C:R:Stacktrace -> {'EXIT', C, R, Stacktrace}
+    end,
+    msg_resp(Res, S#state{stream = {waiting, Something}});
+
+action({read_hregs, <<TransId:16, 0:16, MsgLen:16, Dev_num:8, ?FUN_CODE_READ_HREGS:8, _/binary>> = ResData}, S) ->
+    Len = (MsgLen - 3) * 8,
+    <<_:72, BinData:Len, Something/binary>> = ResData,
+    Mod = S#state.mod,
+    LData = bin_to_list16(<<BinData:Len>>, []),
+    Res =
+    try
+        Mod:message(#read_register{type = holding, transaction_id = TransId, device_number = Dev_num, registers_value = LData}, S#state.state)
+    catch
+        throw:R -> {ok, R};
+        C:R:Stacktrace -> {'EXIT', C, R, Stacktrace}
+    end,
+    msg_resp(Res, S#state{stream = {waiting, Something}});
+
+action({read_inputs, <<TransId:16, 0:16, MsgLen:16, Dev_num:8, ?FUN_CODE_READ_INPUTS:8, _/binary>> = ResData}, S) ->
+    Len = (MsgLen - 3) * 8,
+    <<_:72, Bdata:Len, Something/binary>> = ResData,
+    Mod = S#state.mod,
+    Res =
+    try
+        Mod:message(#read_status{type = input, transaction_id = TransId, device_number = Dev_num, registers_value = <<Bdata:Len>>}, S#state.state)
+    catch
+        throw:R -> {ok, R};
+        C:R:Stacktrace -> {'EXIT', C, R, Stacktrace}
+    end,
+    msg_resp(Res, S#state{stream = {waiting, Something}});
+
+action({read_coils, <<TransId:16, 0:16, MsgLen:16, Dev_num:8, ?FUN_CODE_READ_COILS:8, _/binary>> = ResData}, S) ->
+    Len = (MsgLen - 3) * 8,
+    <<_:72, Bdata:Len, Something/binary>> = ResData,
+    Mod = S#state.mod,
+    Res =
+    try
+        Mod:message(#read_status{type = coil, transaction_id = TransId, device_number = Dev_num, registers_value = <<Bdata:Len>>}, S#state.state)
+    catch
+        throw:R -> {ok, R};
+        C:R:Stacktrace -> {'EXIT', C, R, Stacktrace}
+    end,
+    msg_resp(Res, S#state{stream = {waiting, Something}});
+
+action({write_hreg, <<TransId:16, 0:16, 6:16, Dev_num:8, ?FUN_CODE_WRITE_HREG:8, Reg_num:16, Value:16, Something/binary>>}, S) ->
+    Mod = S#state.mod,
+    Res =
+    try
+        Mod:message(#write_holding_register{transaction_id = TransId, device_number = Dev_num, register_number = Reg_num, register_value = Value}, S#state.state)
+    catch
+        throw:R -> {ok, R};
+        C:R:Stacktrace -> {'EXIT', C, R, Stacktrace}
+    end,
+    msg_resp(Res, S#state{stream = {waiting, Something}});
+
+action({write_hregs, <<TransId:16, 0:16, 6:16, Dev_num:8, ?FUN_CODE_WRITE_HREGS:8, Reg_num:16, _Reg_quantity:16, Something/binary>>}, S) ->
+    Mod = S#state.mod,
+    Res =
+    try
+        Mod:message(#write_holding_registers{transaction_id = TransId, device_number = Dev_num, register_number = Reg_num}, S#state.state)
+    catch
+        throw:R -> {ok, R};
+        C:R:Stacktrace -> {'EXIT', C, R, Stacktrace}
+    end,
+    msg_resp(Res, S#state{stream = {waiting, Something}});
+
+action({write_coil, <<TransId:16, 0:16, 6:16, Dev_num:8, ?FUN_CODE_WRITE_COIL:8, Reg_num:16, Var:16, Something/binary>>}, S) ->
+    Mod = S#state.mod,
+    Value =
+    case <<Var:16>> of
+        <<0:16>> -> 0;
+        <<16#FF:8, 0:8>> -> 1
+    end,
+    Res =
+    try
+        Mod:message(#write_coil_status{transaction_id = TransId, device_number = Dev_num, register_number = Reg_num, register_value = Value}, S#state.state)
+    catch
+        throw:R -> {ok, R};
+        C:R:Stacktrace -> {'EXIT', C, R, Stacktrace}
+    end,
+    msg_resp(Res, S#state{stream = {waiting, Something}});
+
+action({write_coils, <<TransId:16, 0:16, 6:16, Dev_num:8, ?FUN_CODE_WRITE_COILS:8, Reg_num:16, Quantity:16, Something/binary>>}, S) ->
+    Mod = S#state.mod,
+    Res =
+    try
+        Mod:message(#write_coils_status{transaction_id = TransId, device_number = Dev_num, register_number = Reg_num, quantity = Quantity}, S#state.state)
+    catch
+        throw:R -> {ok, R};
+        C:R:Stacktrace -> {'EXIT', C, R, Stacktrace}
+    end,
+    msg_resp(Res, S#state{stream = {waiting, Something}});
+
+action({err_read_hregs, <<TransId:16, 0:16, 3:16, Dev_num:8, ?ERR_CODE_READ_HREGS:8, Err_code:8, Something/binary>>}, S) ->
+    Mod = S#state.mod,
+    Res =
+    try
+        Mod:message(#read_register{transaction_id = TransId, type = holding, device_number = Dev_num, error_code = Err_code}, S#state.state)
+    catch
+        throw:R -> {ok, R};
+        C:R:Stacktrace -> {'EXIT', C, R, Stacktrace}
+    end,
+    msg_resp(Res, S#state{stream = {waiting, Something}});
+
+action({err_read_iregs, <<TransId:16, 0:16, 3:16, Dev_num:8, ?ERR_CODE_READ_IREGS:8, Err_code:8, Something/binary>>}, S) ->
+    Mod = S#state.mod,
+    Res =
+    try
+        Mod:message(#read_register{transaction_id = TransId, type = input, device_number = Dev_num, error_code = Err_code}, S#state.state)
+    catch
+        throw:R -> {ok, R};
+        C:R:Stacktrace -> {'EXIT', C, R, Stacktrace}
+    end,
+    msg_resp(Res, S#state{stream = {waiting, Something}});
+
+action({err_read_inputs, <<TransId:16, 0:16, 3:16, Dev_num:8, ?ERR_CODE_READ_INPUTS:8, Err_code:8, Something/binary>>}, S) ->
+    Mod = S#state.mod,
+    Res =
+    try
+        Mod:message(#read_status{transaction_id = TransId, type = input, device_number = Dev_num, error_code = Err_code}, S#state.state)
+    catch
+        throw:R -> {ok, R};
+        C:R:Stacktrace -> {'EXIT', C, R, Stacktrace}
+    end,
+    msg_resp(Res, S#state{stream = {waiting, Something}});
+
+action({err_read_coils, <<TransId:16, 0:16, 3:16, Dev_num:8, ?ERR_CODE_READ_COILS:8, Err_code:8, Something/binary>>}, S) ->
+    Mod = S#state.mod,
+    Res =
+    try
+        Mod:message(#read_status{transaction_id = TransId, type = coil, device_number = Dev_num, error_code = Err_code}, S#state.state)
+    catch
+        throw:R -> {ok, R};
+        C:R:Stacktrace -> {'EXIT', C, R, Stacktrace}
+    end,
+    msg_resp(Res, S#state{stream = {waiting, Something}});
+
+action({err_write_hreg, <<TransId:16, 0:16, 3:16, Dev_num:8, ?ERR_CODE_WRITE_HREG:8, Err_code:8, Something/binary>>}, S) ->
+    Mod = S#state.mod,
+    Res =
+    try
+        Mod:message(#write_holding_register{transaction_id = TransId, device_number = Dev_num, error_code = Err_code}, S#state.state)
+    catch
+        throw:R -> {ok, R};
+        C:R:Stacktrace -> {'EXIT', C, R, Stacktrace}
+    end,
+    msg_resp(Res, S#state{stream = {waiting, Something}});
+
+action({err_write_hregs, <<TransId:16, 0:16, 3:16, Dev_num:8, ?ERR_CODE_WRITE_HREGS:8, Err_code:8, Something/binary>>}, S) ->
+    Mod = S#state.mod,
+    Res =
+    try
+        Mod:message(#write_holding_registers{transaction_id = TransId, device_number = Dev_num, error_code = Err_code}, S#state.state)
+    catch
+        throw:R -> {ok, R};
+        C:R:Stacktrace -> {'EXIT', C, R, Stacktrace}
+    end,
+    msg_resp(Res, S#state{stream = {waiting, Something}});
+
+action({err_write_coil, <<TransId:16, 0:16, 3:16, Dev_num:8, ?ERR_CODE_WRITE_COIL:8, Err_code:8, Something/binary>>}, S) ->
+    Mod = S#state.mod,
+    Res =
+    try
+        Mod:message(#write_coil_status{transaction_id = TransId, device_number = Dev_num, error_code = Err_code}, S#state.state)
+    catch
+        throw:R -> {ok, R};
+        C:R:Stacktrace -> {'EXIT', C, R, Stacktrace}
+    end,
+    msg_resp(Res, S#state{stream = {waiting, Something}});
+
+action({err_write_coils, <<TransId:16, 0:16, 3:16, Dev_num:8, ?ERR_CODE_WRITE_COILS:8, Err_code:8, Something/binary>>}, S) ->
+    Mod = S#state.mod,
+    Res =
+    try
+        Mod:message(#write_coils_status{transaction_id = TransId, device_number = Dev_num, error_code = Err_code}, S#state.state)
+    catch
+        throw:R -> {ok, R};
+        C:R:Stacktrace -> {'EXIT', C, R, Stacktrace}
+    end,
+    msg_resp(Res, S#state{stream = {waiting, Something}}).
+
 msg_resp(Res, S) ->
     case Res of
         {ok, Command, S2} ->
@@ -479,156 +735,10 @@ handle_info({tcp_closed, _Socket}, S) ->
             throw:R -> {ok, R};
             C:R:Stacktrace -> {'EXIT', C, R, Stacktrace}
     end,
-    msg_resp(Res, S);
-
-handle_info({tcp, _Socket, <<1:16, 0:16, _:16, Dev_num:8, ?FUN_CODE_READ_HREGS:8, _:8, BinData/binary>>}, S) ->
-    Mod = S#state.mod,
-    LData = bin_to_list16(BinData, []),
-    Res =
-    try
-        Mod:message(#read_register{type = holding, device_number = Dev_num, registers_value = LData}, S#state.state)
-    catch
-        throw:R -> {ok, R};
-        C:R:Stacktrace -> {'EXIT', C, R, Stacktrace}
-    end,
-    msg_resp(Res, S);
-
-handle_info({tcp, _Socket, <<TransId:16, 0:16, 5:16, Dev_num:8, ?FUN_CODE_READ_IREGS:8, _:8, BinData/binary>>}, S) ->
-    Mod = S#state.mod,
-    LData = bin_to_list16(BinData, []),
-    Res =
-    try
-        Mod:message(#read_register{type = input, transaction_id = TransId, device_number = Dev_num, registers_value = LData}, S#state.state)
-    catch
-        throw:R -> {ok, R};
-        C:R:Stacktrace -> {'EXIT', C, R, Stacktrace}
-    end,
-    msg_resp(Res, S);
-
-handle_info({tcp, _Socket, <<TransId:16, 0:16, 4:16, Dev_num:8, ?FUN_CODE_READ_INPUTS:8, Bdata/binary>>}, S) ->
-    Mod = S#state.mod,
-    Res =
-    try
-        Mod:message(#read_status{type = input, transaction_id = TransId, device_number = Dev_num, registers_value = Bdata}, S#state.state)
-    catch
-        throw:R -> {ok, R};
-        C:R:Stacktrace -> {'EXIT', C, R, Stacktrace}
-    end,
-    msg_resp(Res, S);
-
-handle_info({tcp, _Socket, <<TransId:16, 0:16, 6:16, Dev_num:8, ?FUN_CODE_WRITE_COILS:8, Reg_num:16, Quantity:16>>}, S) ->
-    Mod = S#state.mod,
-    Res =
-    try
-        Mod:message(#write_coils_status{transaction_id = TransId, device_number = Dev_num, register_number = Reg_num, quantity = Quantity}, S#state.state)
-    catch
-        throw:R -> {ok, R};
-        C:R:Stacktrace -> {'EXIT', C, R, Stacktrace}
-    end,
-    msg_resp(Res, S);
-
-handle_info({tcp, _Socket, <<TransId:16, 0:16, 6:16, Dev_num:8, ?FUN_CODE_WRITE_COIL:8, Reg_num:16, Var:16>>}, S) ->
-    Mod = S#state.mod,
-    Res =
-    try
-        Mod:message(#write_coil_status{transaction_id = TransId, device_number = Dev_num, register_number = Reg_num, register_value = Var}, S#state.state)
-    catch
-        throw:R -> {ok, R};
-        C:R:Stacktrace -> {'EXIT', C, R, Stacktrace}
-    end,
-    msg_resp(Res, S);
-
-handle_info({tcp, _Socket, <<TransId:16, 0:16, 3:16, Dev_num:8, ?ERR_CODE_READ_HREGS:8, Err_code:8>>}, S) ->
-    Mod = S#state.mod,
-    Res =
-    try
-        Mod:message(#read_register{transaction_id = TransId, type = holding, device_number = Dev_num, error_code = Err_code}, S#state.state)
-    catch
-        throw:R -> {ok, R};
-        C:R:Stacktrace -> {'EXIT', C, R, Stacktrace}
-    end,
-    msg_resp(Res, S);
-
-handle_info({tcp, _Socket, <<TransId:16, 0:16, 3:16, Dev_num:8, ?ERR_CODE_READ_IREGS:8, Err_code:8>>}, S) ->
-    Mod = S#state.mod,
-    Res =
-    try
-        Mod:message(#read_register{transaction_id = TransId, type = input, device_number = Dev_num, error_code = Err_code}, S#state.state)
-    catch
-        throw:R -> {ok, R};
-        C:R:Stacktrace -> {'EXIT', C, R, Stacktrace}
-    end,
-    msg_resp(Res, S);
-
-handle_info({tcp, _Socket, <<TransId:16, 0:16, 3:16, Dev_num:8, ?ERR_CODE_READ_COILS:8, Err_code:8>>}, S) ->
-    Mod = S#state.mod,
-    Res =
-    try
-        Mod:message(#read_status{transaction_id = TransId, type = coil, device_number = Dev_num, error_code = Err_code}, S#state.state)
-    catch
-        throw:R -> {ok, R};
-        C:R:Stacktrace -> {'EXIT', C, R, Stacktrace}
-    end,
-    msg_resp(Res, S);
-
-handle_info({tcp, _Socket, <<TransId:16, 0:16, 3:16, Dev_num:8, ?ERR_CODE_READ_INPUTS:8, Err_code:8>>}, S) ->
-    Mod = S#state.mod,
-    Res =
-    try
-        Mod:message(#read_status{transaction_id = TransId, type = input, device_number = Dev_num, error_code = Err_code}, S#state.state)
-    catch
-        throw:R -> {ok, R};
-        C:R:Stacktrace -> {'EXIT', C, R, Stacktrace}
-    end,
-    msg_resp(Res, S);
-
-handle_info({tcp, _Socket, <<TransId:16, 0:16, 3:16, Dev_num:8, ?ERR_CODE_WRITE_HREG:8, Err_code:8>>}, S) ->
-    Mod = S#state.mod,
-    Res =
-    try
-        Mod:message(#write_holding_register{transaction_id = TransId, device_number = Dev_num, error_code = Err_code}, S#state.state)
-    catch
-        throw:R -> {ok, R};
-        C:R:Stacktrace -> {'EXIT', C, R, Stacktrace}
-    end,
-    msg_resp(Res, S);
-
-handle_info({tcp, _Socket, <<TransId:16, 0:16, 3:16, Dev_num:8, ?ERR_CODE_WRITE_HREGS:8, Err_code:8>>}, S) ->
-    Mod = S#state.mod,
-    Res =
-    try
-        Mod:message(#write_holding_registers{transaction_id = TransId, device_number = Dev_num, error_code = Err_code}, S#state.state)
-    catch
-        throw:R -> {ok, R};
-        C:R:Stacktrace -> {'EXIT', C, R, Stacktrace}
-    end,
-    msg_resp(Res, S);
-
-handle_info({tcp, _Socket, <<TransId:16, 0:16, 3:16, Dev_num:8, ?ERR_CODE_WRITE_COIL:8, Err_code:8>>}, S) ->
-    Mod = S#state.mod,
-    Res =
-    try
-        Mod:message(#write_coil_status{transaction_id = TransId, device_number = Dev_num, error_code = Err_code}, S#state.state)
-    catch
-        throw:R -> {ok, R};
-        C:R:Stacktrace -> {'EXIT', C, R, Stacktrace}
-    end,
-    msg_resp(Res, S);
-
-handle_info({tcp, _Socket, <<TransId:16, 0:16, 3:16, Dev_num:8, ?ERR_CODE_WRITE_COILS:8, Err_code:8>>}, S) ->
-    Mod = S#state.mod,
-    Res =
-    try
-        Mod:message(#write_coils_status{transaction_id = TransId, device_number = Dev_num, error_code = Err_code}, S#state.state)
-    catch
-        throw:R -> {ok, R};
-        C:R:Stacktrace -> {'EXIT', C, R, Stacktrace}
-    end,
-    msg_resp(Res, S);
+    msg_resp(Res, S#state{stream = {waiting, <<>>}});
 
 handle_info({tcp, _Socket, Data}, S) ->
-    gen_server:cast(self(), {stream, Data}),
-    {noreply, S};
+    action(check_stream(Data, S), S);
 
 handle_info(Info, S) ->
     Mod = S#state.mod,
@@ -703,42 +813,42 @@ cmd([#connect{} | T], #state{stage = stop} = S) ->
 cmd([#connect{ip_addr = Ip_addr, port = Port} | T], #state{stage = _} = S) ->
     cmd_connect(T, S, {Ip_addr, Port});
 
-cmd([#change_sock_opts{active = Active, reuseaddr = Reuseaddr, nodelay = Nodelay, ifaddr = Ifaddr} | T], #state{stage = connect} = S) ->
-    S2 = change_sopts([Ifaddr, binary, {packet, raw}, {active, Active}, {reuseaddr, Reuseaddr}, {nodelay, Nodelay}], S),
+cmd([#change_sock_opts{reuseaddr = Reuseaddr, nodelay = Nodelay, ifaddr = Ifaddr} | T], #state{stage = connect} = S) ->
+    S2 = change_sopts([Ifaddr, binary, {packet, raw}, {reuseaddr, Reuseaddr}, {nodelay, Nodelay}], S),
     inet:setopts(S2#state.sock_info#sock_info.socket, S2#state.sock_opts),
     cmd(T, S2);
-cmd([#change_sock_opts{active = Active, reuseaddr = Reuseaddr, nodelay = Nodelay, ifaddr = Ifaddr} | T], #state{sock_info = #sock_info{socket = undefined}, stage = stop} = S) ->
-    S2 = change_sopts([Ifaddr, binary, {packet, raw}, {active, Active}, {reuseaddr, Reuseaddr}, {nodelay, Nodelay}], S),
+cmd([#change_sock_opts{reuseaddr = Reuseaddr, nodelay = Nodelay, ifaddr = Ifaddr} | T], #state{sock_info = #sock_info{socket = undefined}, stage = stop} = S) ->
+    S2 = change_sopts([Ifaddr, binary, {packet, raw}, {reuseaddr, Reuseaddr}, {nodelay, Nodelay}], S),
     cmd(T, S2);
-cmd([#change_sock_opts{active = Active, reuseaddr = Reuseaddr, nodelay = Nodelay, ifaddr = Ifaddr} | T], #state{stage = stop} = S) ->
-    S2 = change_sopts([Ifaddr, binary, {packet, raw}, {active, Active}, {reuseaddr, Reuseaddr}, {nodelay, Nodelay}], S),
+cmd([#change_sock_opts{reuseaddr = Reuseaddr, nodelay = Nodelay, ifaddr = Ifaddr} | T], #state{stage = stop} = S) ->
+    S2 = change_sopts([Ifaddr, binary, {packet, raw}, {reuseaddr, Reuseaddr}, {nodelay, Nodelay}], S),
     inet:setopts(S2#state.sock_info#sock_info.socket, S2#state.sock_opts),
     cmd(T, S2);
-cmd([#change_sock_opts{active = Active, reuseaddr = Reuseaddr, nodelay = Nodelay, ifaddr = Ifaddr} | T], #state{stage = _} = S) ->
-    S2 = change_sopts([Ifaddr, binary, {packet, raw}, {active, Active}, {reuseaddr, Reuseaddr}, {nodelay, Nodelay}], S),
+cmd([#change_sock_opts{reuseaddr = Reuseaddr, nodelay = Nodelay, ifaddr = Ifaddr} | T], #state{stage = _} = S) ->
+    S2 = change_sopts([Ifaddr, binary, {packet, raw}, {reuseaddr, Reuseaddr}, {nodelay, Nodelay}], S),
     cmd(T, S2);
 
 cmd([#disconnect{reason = Reason} | T], #state{stage = connect} = S) ->
     Socket = S#state.sock_info#sock_info.socket,
     gen_tcp:close(Socket),
     S2 = S#state{sock_info = #sock_info{socket = undefined, connection = close}},
-    cmd_disconnect(S2#state.mod, Reason, T, S2);
+    cmd_disconnect(S2#state.mod, Reason, T, S2#state{stream = {waiting, <<>>}});
 cmd([#disconnect{} | T], #state{sock_info = #sock_info{socket = undefined}, stage = stop} = S) ->
     cmd(T, S);
 cmd([#disconnect{reason = Reason} | T], #state{stage = stop} = S) ->
     Socket = S#state.sock_info#sock_info.socket,
     gen_tcp:close(Socket),
     S2 = S#state{sock_info = #sock_info{socket = undefined, connection = close}},
-    cmd_stop_disconnect(S2#state.mod, Reason, T, S2);
+    cmd_stop_disconnect(S2#state.mod, Reason, T, S2#state{stream = {waiting, <<>>}});
 cmd([#disconnect{} | T], #state{stage = _} = S) ->
     cmd(T, S);
 
 cmd([#read_register{} | T], #state{stage = init} = S) ->
     cmd(T, S);
 cmd([#read_register{} | T], #state{stage = disconnect} = S) ->
-    cmd_disconnect(S#state.mod, socket_closed, T, S);
+    cmd_disconnect(S#state.mod, socket_closed, T, S#state{stream = {waiting, <<>>}});
 cmd([#read_register{} | T], #state{stage = stop, sock_info = #sock_info{socket = undefined}} = S) ->
-    cmd_stop_disconnect(S#state.mod, socket_closed, T, S);
+    cmd_stop_disconnect(S#state.mod, socket_closed, T, S#state{stream = {waiting, <<>>}});
 cmd([#read_register{transaction_id = TransId, type = holding, device_number = Dev_num, register_number = Reg_num, quantity = Quantity} | T], #state{stage = stop} = S) ->
     read_hregs(T, {TransId, Dev_num, Reg_num, Quantity}, S);
 cmd([#read_register{transaction_id = TransId, type = holding, device_number = Dev_num, register_number = Reg_num, quantity = Quantity} | T], #state{stage = connect} = S) ->
@@ -752,9 +862,9 @@ cmd([#read_register{transaction_id = TransId, type = input, device_number = Dev_
 cmd([#read_status{} | T], #state{stage = init} = S) ->
     cmd(T, S);
 cmd([#read_status{} | T], #state{stage = disconnect} = S) ->
-    cmd_disconnect(S#state.mod, socket_closed, T, S);
+    cmd_disconnect(S#state.mod, socket_closed, T, S#state{stream = {waiting, <<>>}});
 cmd([#read_status{} | T], #state{stage = stop, sock_info = #sock_info{socket = undefined}} = S) ->
-    cmd_stop_disconnect(S#state.mod, socket_closed, T, S);
+    cmd_stop_disconnect(S#state.mod, socket_closed, T, S#state{stream = {waiting, <<>>}});
 cmd([#read_status{transaction_id = TransId, type = coil, device_number = Dev_num, register_number = Reg_num, quantity = Quantity} | T], #state{stage = stop} = S) ->
     read_coils(T, {TransId, Dev_num, Reg_num, Quantity}, S);
 cmd([#read_status{transaction_id = TransId, type = coil, device_number = Dev_num, register_number = Reg_num, quantity = Quantity} | T], #state{stage = connect} = S) ->
@@ -768,9 +878,9 @@ cmd([#read_status{transaction_id = TransId, type = input, device_number = Dev_nu
 cmd([#write_holding_register{} | T], #state{stage = init} = S) ->
     cmd(T, S);
 cmd([#write_holding_register{} | T], #state{stage = disconnect} = S) ->
-    cmd_disconnect(S#state.mod, socket_closed, T, S);
+    cmd_disconnect(S#state.mod, socket_closed, T, S#state{stream = {waiting, <<>>}});
 cmd([#write_holding_register{} | T], #state{stage = stop, sock_info = #sock_info{socket = undefined}} = S) ->
-    cmd_stop_disconnect(S#state.mod, socket_closed, T, S);
+    cmd_stop_disconnect(S#state.mod, socket_closed, T, S#state{stream = {waiting, <<>>}});
 cmd([#write_holding_register{transaction_id = TransId, device_number = Dev_num, register_number = Reg_num, register_value = Value} | T], #state{stage = stop} = S) ->
     write_hreg(T, {TransId, Dev_num, Reg_num, Value}, S);
 cmd([#write_holding_register{transaction_id = TransId, device_number = Dev_num, register_number = Reg_num, register_value = Value} | T], #state{stage = connect} = S) ->
@@ -779,9 +889,9 @@ cmd([#write_holding_register{transaction_id = TransId, device_number = Dev_num, 
 cmd([#write_holding_registers{} | T], #state{stage = init} = S) ->
     cmd(T, S);
 cmd([#write_holding_registers{} | T], #state{stage = disconnect} = S) ->
-    cmd_disconnect(S#state.mod, socket_closed, T, S);
+    cmd_disconnect(S#state.mod, socket_closed, T, S#state{stream = {waiting, <<>>}});
 cmd([#write_holding_registers{} | T], #state{stage = stop, sock_info = #sock_info{socket = undefined}} = S) ->
-    cmd_stop_disconnect(S#state.mod, socket_closed, T, S);
+    cmd_stop_disconnect(S#state.mod, socket_closed, T, S#state{stream = {waiting, <<>>}});
 cmd([#write_holding_registers{transaction_id = TransId, device_number = Dev_num, register_number = Reg_num, registers_value = Values} | T], #state{stage = stop} = S) ->
     write_hregs(T, {TransId, Dev_num, Reg_num, Values}, S);
 cmd([#write_holding_registers{transaction_id = TransId, device_number = Dev_num, register_number = Reg_num, registers_value = Values} | T], #state{stage = connect} = S) ->
@@ -790,9 +900,9 @@ cmd([#write_holding_registers{transaction_id = TransId, device_number = Dev_num,
 cmd([#write_coil_status{} | T], #state{stage = init} = S) ->
     cmd(T, S);
 cmd([#write_coil_status{} | T], #state{stage = disconnect} = S) ->
-    cmd_disconnect(S#state.mod, socket_closed, T, S);
+    cmd_disconnect(S#state.mod, socket_closed, T, S#state{stream = {waiting, <<>>}});
 cmd([#write_coil_status{} | T], #state{stage = stop, sock_info = #sock_info{socket = undefined}} = S) ->
-    cmd_stop_disconnect(S#state.mod, socket_closed, T, S);
+    cmd_stop_disconnect(S#state.mod, socket_closed, T, S#state{stream = {waiting, <<>>}});
 cmd([#write_coil_status{transaction_id = TransId, device_number = Dev_num, register_number = Reg_num, register_value = Value} | T], #state{stage = stop} = S) ->
     write_creg(T, {TransId, Dev_num, Reg_num, Value}, S);
 cmd([#write_coil_status{transaction_id = TransId, device_number = Dev_num, register_number = Reg_num, register_value = Value} | T], #state{stage = connect} = S) ->
@@ -801,9 +911,9 @@ cmd([#write_coil_status{transaction_id = TransId, device_number = Dev_num, regis
 cmd([#write_coils_status{} | T], #state{stage = init} = S) ->
     cmd(T, S);
 cmd([#write_coils_status{} | T], #state{stage = disconnect} = S) ->
-    cmd_disconnect(S#state.mod, socket_closed, T, S);
+    cmd_disconnect(S#state.mod, socket_closed, T, S#state{stream = {waiting, <<>>}});
 cmd([#write_coils_status{} | T], #state{stage = stop, sock_info = #sock_info{socket = undefined}} = S) ->
-    cmd_stop_disconnect(S#state.mod, socket_closed, T, S);
+    cmd_stop_disconnect(S#state.mod, socket_closed, T, S#state{stream = {waiting, <<>>}});
 cmd([#write_coils_status{transaction_id = TransId, device_number = Dev_num, register_number = Reg_num, quantity = Quantity, registers_value = Values} | T], #state{stage = stop} = S) ->
     write_cregs(T, {TransId, Dev_num, Reg_num, Quantity, Values}, S);
 cmd([#write_coils_status{transaction_id = TransId, device_number = Dev_num, register_number = Reg_num, quantity = Quantity, registers_value = Values} | T], #state{stage = connect} = S) ->
@@ -913,146 +1023,22 @@ cmd_stop_connect(T, S, {Ip_addr, Port}) ->
 read_hregs(T, {TransId, Dev_num, Reg_num, Quantity}, S) ->
     Packet = <<TransId:16, 0:16, 6:16, Dev_num:8, ?FUN_CODE_READ_HREGS:8, Reg_num:16, Quantity:16>>,
     Socket = S#state.sock_info#sock_info.socket,
-    Mod = S#state.mod,
     % Modbus код функции 03 (чтение Holding reg)
     case gen_tcp:send(Socket, Packet) of
         ok ->
-        case gen_tcp:recv(Socket, 0) of
-            {ok, <<TransId:16, 0:16, _:16, Dev_num:8, ?FUN_CODE_READ_HREGS:8, _:8, BinData/binary>>} ->
-                LData = bin_to_list16(BinData, []),
-                Res =
-                try
-                    Mod:message(#read_register{
-                        type = holding,
-                        transaction_id = TransId,
-                        device_number = Dev_num,
-                        register_number = Reg_num,
-                        quantity = Quantity,
-                        registers_value = LData
-                        }, S#state.state)
-                catch
-                    throw:R -> {ok, R};
-                    C:R:Stacktrace -> {'EXIT', C, R, Stacktrace}
-                end,
-                case Res of
-                    {ok, Command, S2} ->
-                        cmd(T ++ Command, S#state{state = S2});
-                    {stop, _Reason, Command, S2} ->
-                        cmd(T ++ Command, S#state{stage = stop, state = S2});
-                    {'EXIT', Class, Reason, Strace} ->
-                            erlang:raise(Class, Reason, Strace)
-                end;
-            {ok, <<TransId:16, 0:16, 3:16, Dev_num:8, ?ERR_CODE_READ_HREGS:8, Err_code:8>>} ->
-                Res =
-                    try
-                        Mod:message(#read_register{
-                            transaction_id = TransId,
-                            type = holding,
-                            device_number = Dev_num,
-                            error_code = Err_code}, S#state.state)
-                    catch
-                        throw:R -> {ok, R};
-                        C:R:Stacktrace -> {'EXIT', C, R, Stacktrace}
-                    end,
-                    case Res of
-                        {ok, Command, S2} ->
-                            cmd(T ++ Command, S#state{state = S2});
-                        {stop, _Reason, Command, S2} ->
-                            cmd(T ++ Command, S#state{stage = stop, state = S2});
-                        {'EXIT', Class, Reason, Strace} ->
-                            erlang:raise(Class, Reason, Strace)
-                    end;
-            {ok, _Else} ->
-                cmd(T, S);
-            {error, Reason} ->
-                Res =
-                try
-                    Mod:message({error, Reason}, S#state.state)
-                catch
-                    throw:R -> {ok, R};
-                    C:R:Stacktrace -> {'EXIT', C, R, Stacktrace}
-                end,
-                case Res of
-                    {ok, Command, S2} ->
-                        cmd(T ++ Command, S#state{state = S2});
-                    {stop, _Reason, Command, S2} ->
-                        cmd(T ++ Command, S#state{stage = stop, state = S2});
-                    {'EXIT', Class, Reason, Strace} ->
-                        erlang:raise(Class, Reason, Strace)
-                end
-        end;
+            cmd(T, S);
         {error, Reason} ->
             gen_tcp:close(Socket),
             cmd_disconnect(S#state.mod, Reason, T, S)
     end.
 
 read_iregs(T, {TransId, Dev_num, Reg_num, Quantity}, S) ->
-    Packet = <<TransId:16, 0:16, 6:16, Dev_num:8, ?FUN_CODE_READ_IREGS:8, Reg_num:16, 1:16>>,
+    Packet = <<TransId:16, 0:16, 6:16, Dev_num:8, ?FUN_CODE_READ_IREGS:8, Reg_num:16, Quantity:16>>,
     Socket = S#state.sock_info#sock_info.socket,
-    Mod = S#state.mod,
     % Modbus код функции 04 (чтение Input reg)
     case gen_tcp:send(Socket, Packet) of
         ok ->
-            case gen_tcp:recv(Socket, 0) of
-                {ok, <<TransId:16, 0:16, 5:16, Dev_num:8, ?FUN_CODE_READ_IREGS:8, _:8, BinData/binary>>} ->
-                    LData = bin_to_list16(BinData, []),
-                    Res =
-                    try
-                        Mod:message(#read_register{
-                            type = input,
-                            transaction_id = TransId,
-                            device_number = Dev_num,
-                            register_number = Reg_num,
-                            quantity = Quantity,
-                            registers_value = LData
-                            }, S#state.state)
-                    catch
-                        throw:R -> {ok, R};
-                        C:R:Stacktrace -> {'EXIT', C, R, Stacktrace}
-                    end,
-                    case Res of
-                        {ok, Command, S2} ->
-                            cmd(T ++ Command, S#state{state = S2});
-                        {stop, _Reason, Command, S2} ->
-                            cmd(T ++ Command, S#state{stage = stop, state = S2});
-                        {'EXIT', Class, Reason, Strace} ->
-                            erlang:raise(Class, Reason, Strace)
-                    end;
-                {ok, <<TransId:16, 0:16, 3:16, Dev_num:8, ?ERR_CODE_READ_IREGS:8, Err_code:8>>} ->
-                    Res =
-                    try
-                        Mod:message(#read_register{transaction_id = TransId, type = input, device_number = Dev_num, error_code = Err_code}, S#state.state)
-                    catch
-                        throw:R -> {ok, R};
-                        C:R:Stacktrace -> {'EXIT', C, R, Stacktrace}
-                    end,
-                    case Res of
-                        {ok, Command, S2} ->
-                            cmd(T ++ Command, S#state{state = S2});
-                        {stop, _Reason, Command, S2} ->
-                            cmd(T ++ Command, S#state{stage = stop, state = S2});
-                        {'EXIT', Class, Reason, Strace} ->
-                            erlang:raise(Class, Reason, Strace)
-                    end;
-                {ok, _Else} ->
-                    cmd(T, S);
-                {error, Reason} ->
-                    Res =
-                    try
-                        Mod:message({error, Reason}, S#state.state)
-                    catch
-                        throw:R -> {ok, R};
-                        C:R:Stacktrace -> {'EXIT', C, R, Stacktrace}
-                    end,
-                    case Res of
-                        {ok, Command, S2} ->
-                            cmd(T ++ Command, S#state{state = S2});
-                        {stop, Reason, Command, S2} ->
-                            cmd(T ++ Command, S#state{stage = stop, state = S2});
-                        {'EXIT', Class, Reason, Strace} ->
-                            erlang:raise(Class, Reason, Strace)
-                    end
-            end;
+            cmd(T, S);
         {error, Reason} ->
             gen_tcp:close(Socket),
             S2 = S#state{sock_info = #sock_info{socket = undefined, connection = close}},
@@ -1062,69 +1048,10 @@ read_iregs(T, {TransId, Dev_num, Reg_num, Quantity}, S) ->
 read_coils(T, {TransId, Dev_num, Reg_num, Quantity}, S) ->
     Packet = <<TransId:16, 0:16, 6:16, Dev_num:8, ?FUN_CODE_READ_COILS:8, Reg_num:16, Quantity:16>>,
     Socket = S#state.sock_info#sock_info.socket,
-    Mod = S#state.mod,
     % Modbus код функции 01 (чтение Coils status)
     case gen_tcp:send(Socket, Packet) of
         ok ->
-            case gen_tcp:recv(Socket, 0) of
-                {ok, <<TransId:16, 0:16, 4:16, Dev_num:8, ?FUN_CODE_READ_COILS:8, _:8, Bdata/binary>>} ->
-                    Res =
-                    try
-                        Mod:message(#read_status{
-                            type = coil,
-                            transaction_id = TransId,
-                            device_number = Dev_num,
-                            register_number = Reg_num,
-                            quantity = Quantity,
-                            registers_value = Bdata
-                            }, S#state.state)
-                    catch
-                        throw:R -> {ok, R};
-                        C:R:Stacktrace -> {'EXIT', C, R, Stacktrace}
-                    end,
-                    case Res of
-                        {ok, Command, S2} ->
-                            cmd(T ++ Command, S#state{state = S2});
-                        {stop, _Reason, Command, S2} ->
-                            cmd(T ++ Command, S#state{stage = stop, state = S2});
-                        {'EXIT', Class, Reason, Strace} ->
-                            erlang:raise(Class, Reason, Strace)
-                    end;
-                {ok, <<TransId:16, 0:16, 3:16, Dev_num:8, ?ERR_CODE_READ_COILS:8, Err_code:8>>} ->
-                    Res =
-                    try
-                        Mod:message(#read_status{transaction_id = TransId, type = coil, device_number = Dev_num, error_code = Err_code}, S#state.state)
-                    catch
-                        throw:R -> {ok, R};
-                        C:R:Stacktrace -> {'EXIT', C, R, Stacktrace}
-                    end,
-                    case Res of
-                        {ok, Command, S2} ->
-                            cmd(T ++ Command, S#state{state = S2});
-                        {stop, _Reason, Command, S2} ->
-                            cmd(T ++ Command, S#state{stage = stop, state = S2});
-                        {'EXIT', Class, Reason, Strace} ->
-                            erlang:raise(Class, Reason, Strace)
-                    end;
-                {ok, _Else} ->
-                    cmd(T, S);
-                {error, Reason} ->
-                    Res =
-                    try
-                        Mod:message({error, Reason}, S#state.state)
-                    catch
-                        throw:R -> {ok, R};
-                        C:R:Stacktrace -> {'EXIT', C, R, Stacktrace}
-                    end,
-                    case Res of
-                        {ok, Command, S2} ->
-                            cmd(T ++ Command, S#state{state = S2});
-                        {stop, _Reason, Command, S2} ->
-                            cmd(T ++ Command, S#state{stage = stop, state = S2});
-                        {'EXIT', Class, Reason, Strace} ->
-                            erlang:raise(Class, Reason, Strace)
-                    end
-            end;
+            cmd(T, S);
         {error, Reason} ->
             gen_tcp:close(Socket),
             S2 = S#state{sock_info = #sock_info{socket = undefined, connection = close}},
@@ -1134,69 +1061,10 @@ read_coils(T, {TransId, Dev_num, Reg_num, Quantity}, S) ->
 read_inputs(T, {TransId, Dev_num, Reg_num, Quantity}, S) ->
     Packet = <<TransId:16, 0:16, 6:16, Dev_num:8, ?FUN_CODE_READ_INPUTS:8, Reg_num:16, Quantity:16>>,
     Socket = S#state.sock_info#sock_info.socket,
-    Mod = S#state.mod,
     % Modbus код функции 02 (чтение Inputs status)
     case gen_tcp:send(Socket, Packet) of
         ok ->
-            case gen_tcp:recv(Socket, 0) of
-                {ok, <<TransId:16, 0:16, 4:16, Dev_num:8, ?FUN_CODE_READ_INPUTS:8, Bdata/binary>>} ->
-                    Res =
-                    try
-                        Mod:message(#read_status{
-                            type = input,
-                            transaction_id = TransId,
-                            device_number = Dev_num,
-                            register_number = Reg_num,
-                            quantity = Quantity,
-                            registers_value = Bdata
-                            }, S#state.state)
-                    catch
-                        throw:R -> {ok, R};
-                        C:R:Stacktrace -> {'EXIT', C, R, Stacktrace}
-                    end,
-                    case Res of
-                        {ok, Command, S2} ->
-                            cmd(T ++ Command, S#state{state = S2});
-                        {stop, _Reason, Command, S2} ->
-                            cmd(T ++ Command, S#state{stage = stop, state = S2});
-                        {'EXIT', Class, Reason, Strace} ->
-                            erlang:raise(Class, Reason, Strace)
-                    end;
-                {ok, <<TransId:16, 0:16, 3:16, Dev_num:8, ?ERR_CODE_READ_INPUTS:8, Err_code:8>>} ->
-                    Res =
-                    try
-                        Mod:message(#read_status{transaction_id = TransId, type = input, device_number = Dev_num, error_code = Err_code}, S#state.state)
-                    catch
-                        throw:R -> {ok, R};
-                        C:R:Stacktrace -> {'EXIT', C, R, Stacktrace}
-                    end,
-                    case Res of
-                        {ok, Command, S2} ->
-                            cmd(T ++ Command, S#state{state = S2});
-                        {stop, _Reason, Command, S2} ->
-                            cmd(T ++ Command, S#state{stage = stop, state = S2});
-                        {'EXIT', Class, Reason, Strace} ->
-                            erlang:raise(Class, Reason, Strace)
-                    end;
-                {ok, _Else} ->
-                    cmd(T, S);
-                {error, Reason} ->
-                    Res =
-                    try
-                        Mod:message({error, Reason}, S#state.state)
-                    catch
-                        throw:R -> {ok, R};
-                        C:R:Stacktrace -> {'EXIT', C, R, Stacktrace}
-                    end,
-                    case Res of
-                        {ok, Command, S2} ->
-                            cmd(T ++ Command, S#state{state = S2});
-                        {stop, _Reason, Command, S2} ->
-                            cmd(T ++ Command, S#state{stage = stop, state = S2});
-                        {'EXIT', Class, Reason, Strace} ->
-                            erlang:raise(Class, Reason, Strace)
-                    end
-            end;
+            cmd(T, S);
         {error, Reason} ->
             gen_tcp:close(Socket),
             S2 = S#state{sock_info = #sock_info{socket = undefined, connection = close}},
@@ -1206,67 +1074,10 @@ read_inputs(T, {TransId, Dev_num, Reg_num, Quantity}, S) ->
 write_hreg(T, {TransId, Dev_num, Reg_num, Value}, S) ->
     Packet = <<TransId:16, 0:16, 6:16, Dev_num:8, ?FUN_CODE_WRITE_HREG:8, Reg_num:16, Value:16>>,
     Socket = S#state.sock_info#sock_info.socket,
-    Mod = S#state.mod,
     % Modbus код функции 06 (запись Holding reg)
     case gen_tcp:send(Socket, Packet) of
         ok ->
-            case gen_tcp:recv(Socket, 0) of
-                {ok, <<TransId:16, 0:16, 6:16, Dev_num:8, ?FUN_CODE_WRITE_HREG:8, Reg_num:16, Value:16>>} ->
-                    Res =
-                    try
-                        Mod:message(#write_holding_register{
-                            transaction_id = TransId,
-                            device_number = Dev_num,
-                            register_number = Reg_num,
-                            register_value = Value
-                            }, S#state.state)
-                    catch
-                        throw:R -> {ok, R};
-                        C:R:Stacktrace -> {'EXIT', C, R, Stacktrace}
-                    end,
-                    case Res of
-                        {ok, Command, S2} ->
-                            cmd(T ++ Command, S#state{state = S2});
-                        {stop, _Reason, Command, S2} ->
-                            cmd(T ++ Command, S#state{stage = stop, state = S2});
-                        {'EXIT', Class, Reason, Strace} ->
-                            erlang:raise(Class, Reason, Strace)
-                    end;
-                {ok, <<TransId:16, 0:16, 3:16, Dev_num:8, ?ERR_CODE_WRITE_HREG:8, Err_code:8>>} ->
-                    Res =
-                    try
-                        Mod:message(#write_holding_register{transaction_id = TransId, device_number = Dev_num, error_code = Err_code}, S#state.state)
-                    catch
-                        throw:R -> {ok, R};
-                        C:R:Stacktrace -> {'EXIT', C, R, Stacktrace}
-                    end,
-                    case Res of
-                        {ok, Command, S2} ->
-                            cmd(T ++ Command, S#state{state = S2});
-                        {stop, _Reason, Command, S2} ->
-                            cmd(T ++ Command, S#state{stage = stop, state = S2});
-                        {'EXIT', Class, Reason, Strace} ->
-                            erlang:raise(Class, Reason, Strace)
-                    end;
-                {ok, _Else} ->
-                    cmd(T, S);
-                {error, Reason} ->
-                    Res =
-                    try
-                        Mod:message({error, Reason}, S#state.state)
-                    catch
-                        throw:R -> {ok, R};
-                        C:R:Stacktrace -> {'EXIT', C, R, Stacktrace}
-                    end,
-                    case Res of
-                        {ok, Command, S2} ->
-                            cmd(T ++ Command, S#state{state = S2});
-                        {stop, Reason, Command, S2} ->
-                            cmd(T ++ Command, S#state{stage = stop, state = S2});
-                        {'EXIT', Class, Reason, Strace} ->
-                            erlang:raise(Class, Reason, Strace)
-                    end
-            end;
+            cmd(T, S);
         {error, Reason} ->
             gen_tcp:close(Socket),
             S2 = S#state{sock_info = #sock_info{socket = undefined, connection = close}},
@@ -1280,67 +1091,10 @@ write_hregs(T, {TransId, Dev_num, Reg_num, Values}, S) ->
     Packet_without_values = <<TransId:16, 0:16, Mbap_len:16, Dev_num:8, ?FUN_CODE_WRITE_HREGS:8, Reg_num:16, Reg_quantity:16, Len:8>>,
     Packet = list_to_bin16(Values, Packet_without_values),
     Socket = S#state.sock_info#sock_info.socket,
-    Mod = S#state.mod,
     % Modbus код функции 10 (запись Holding reg)
     case gen_tcp:send(Socket, Packet) of
         ok ->
-            case gen_tcp:recv(Socket, 0) of
-                {ok, <<TransId:16, 0:16, 6:16, Dev_num:8, ?FUN_CODE_WRITE_HREGS:8, Reg_num:16, Reg_quantity:16>>} ->
-                    Res =
-                    try
-                        Mod:message(#write_holding_registers{
-                            transaction_id = TransId,
-                            device_number = Dev_num,
-                            register_number = Reg_num,
-                            registers_value = Values
-                            }, S#state.state)
-                    catch
-                        throw:R -> {ok, R};
-                        C:R:Stacktrace -> {'EXIT', C, R, Stacktrace}
-                    end,
-                    case Res of
-                        {ok, Command, S2} ->
-                            cmd(T ++ Command, S#state{state = S2});
-                        {stop, _Reason, Command, S2} ->
-                            cmd(T ++ Command, S#state{stage = stop, state = S2});
-                        {'EXIT', Class, Reason, Strace} ->
-                            erlang:raise(Class, Reason, Strace)
-                    end;
-                {ok, <<TransId:16, 0:16, 3:16, Dev_num:8, ?ERR_CODE_WRITE_HREGS:8, Err_code:8>>} ->
-                    Res =
-                    try
-                        Mod:message(#write_holding_registers{transaction_id = TransId, device_number = Dev_num, error_code = Err_code}, S#state.state)
-                    catch
-                        throw:R -> {ok, R};
-                        C:R:Stacktrace -> {'EXIT', C, R, Stacktrace}
-                    end,
-                    case Res of
-                        {ok, Command, S2} ->
-                            cmd(T ++ Command, S#state{state = S2});
-                        {stop, _Reason, Command, S2} ->
-                            cmd(T ++ Command, S#state{stage = stop, state = S2});
-                        {'EXIT', Class, Reason, Strace} ->
-                            erlang:raise(Class, Reason, Strace)
-                    end;
-                {ok, _Else} ->
-                    cmd(T, S);
-                {error, Reason} ->
-                    Res =
-                    try
-                        Mod:message({error, Reason}, S#state.state)
-                    catch
-                        throw:R -> {ok, R};
-                        C:R:Stacktrace -> {'EXIT', C, R, Stacktrace}
-                    end,
-                    case Res of
-                        {ok, Command, S2} ->
-                            cmd(T ++ Command, S#state{state = S2});
-                        {stop, _Reason, Command, S2} ->
-                            cmd(T ++ Command, S#state{stage = stop, state = S2});
-                        {'EXIT', Class, Reason, Strace} ->
-                            erlang:raise(Class, Reason, Strace)
-                    end
-            end;
+            cmd(T, S);
         {error, Reason} ->
             gen_tcp:close(Socket),
             S2 = S#state{sock_info = #sock_info{socket = undefined, connection = close}},
@@ -1361,67 +1115,10 @@ write_creg(T, {TransId, Dev_num, Reg_num, Value}, S) ->
             <<TransId:16, 0:16, 6:16, Dev_num:8, ?FUN_CODE_WRITE_COIL:8, Reg_num:16, Var/binary>>
     end,
     Socket = S#state.sock_info#sock_info.socket,
-    Mod = S#state.mod,
     % Modbus код функции 05 (запись Coil status)
     case gen_tcp:send(Socket, Packet) of
         ok ->
-            case gen_tcp:recv(Socket, 0) of
-                {ok, <<TransId:16, 0:16, 6:16, Dev_num:8, ?FUN_CODE_WRITE_COIL:8, Reg_num:16, Var2:16>>} ->
-                    Res =
-                    try
-                        Mod:message(#write_coil_status{
-                            transaction_id = TransId,
-                            device_number = Dev_num,
-                            register_number = Reg_num,
-                            register_value = Var2
-                            }, S#state.state)
-                    catch
-                        throw:R -> {ok, R};
-                        C:R:Stacktrace -> {'EXIT', C, R, Stacktrace}
-                    end,
-                    case Res of
-                        {ok, Command, S2} ->
-                            cmd(T ++ Command, S#state{state = S2});
-                        {stop, _Reason, Command, S2} ->
-                            cmd(T ++ Command, S#state{stage = stop, state = S2});
-                        {'EXIT', Class, Reason, Strace} ->
-                            erlang:raise(Class, Reason, Strace)
-                    end;
-                {ok, <<TransId:16, 0:16, 3:16, Dev_num:8, ?ERR_CODE_WRITE_COIL:8, Err_code:8>>} ->
-                    Res =
-                    try
-                        Mod:message(#write_coil_status{transaction_id = TransId, device_number = Dev_num, error_code = Err_code}, S#state.state)
-                    catch
-                        throw:R -> {ok, R};
-                        C:R:Stacktrace -> {'EXIT', C, R, Stacktrace}
-                    end,
-                    case Res of
-                        {ok, Command, S2} ->
-                            cmd(T ++ Command, S#state{state = S2});
-                        {stop, _Reason, Command, S2} ->
-                            cmd(T ++ Command, S#state{stage = stop, state = S2});
-                        {'EXIT', Class, Reason, Strace} ->
-                            erlang:raise(Class, Reason, Strace)
-                    end;
-                {ok, _Else} ->
-                    cmd(T, S);
-                {error, Reason} ->
-                    Res =
-                    try
-                        Mod:message({error, Reason}, S#state.state)
-                    catch
-                        throw:R -> {ok, R};
-                        C:R:Stacktrace -> {'EXIT', C, R, Stacktrace}
-                    end,
-                    case Res of
-                        {ok, Command, S2} ->
-                            cmd(T ++ Command, S#state{state = S2});
-                        {stop, Reason, Command, S2} ->
-                            cmd(T ++ Command, S#state{stage = stop, state = S2});
-                        {'EXIT', Class, Reason, Strace} ->
-                            erlang:raise(Class, Reason, Strace)
-                    end
-            end;
+            cmd(T, S);
         {error, Reason} ->
             gen_tcp:close(Socket),
             S2 = S#state{sock_info = #sock_info{socket = undefined, connection = close}},
@@ -1431,68 +1128,10 @@ write_creg(T, {TransId, Dev_num, Reg_num, Value}, S) ->
 write_cregs(T, {TransId, Dev_num, Reg_num, Quantity, Values}, S) ->
     Packet = <<TransId:16, 0:16, 8:16, Dev_num:8, ?FUN_CODE_WRITE_COILS:8, Reg_num:16, Quantity:16, 1:8, Values:8>>,
     Socket = S#state.sock_info#sock_info.socket,
-    Mod = S#state.mod,
-    % Modbus код функции 05 (запись Coil status)
+    % Modbus код функции 10 (запись Coils status)
     case gen_tcp:send(Socket, Packet) of
         ok ->
-            case gen_tcp:recv(Socket, 0) of
-                {ok, <<TransId:16, 0:16, 6:16, Dev_num:8, ?FUN_CODE_WRITE_COILS:8, Reg_num:16, Quantity:16>>} ->
-                    Res =
-                    try
-                        Mod:message(#write_coils_status{
-                            transaction_id = TransId,
-                            device_number = Dev_num,
-                            register_number = Reg_num,
-                            registers_value = Values,
-                            quantity = Quantity
-                            }, S#state.state)
-                    catch
-                        throw:R -> {ok, R};
-                        C:R:Stacktrace -> {'EXIT', C, R, Stacktrace}
-                    end,
-                    case Res of
-                        {ok, Command, S2} ->
-                            cmd(T ++ Command, S#state{state = S2});
-                        {stop, _Reason, Command, S2} ->
-                            cmd(T ++ Command, S#state{stage = stop, state = S2});
-                        {'EXIT', Class, Reason, Strace} ->
-                            erlang:raise(Class, Reason, Strace)
-                    end;
-                {ok, <<TransId:16, 0:16, 3:16, Dev_num:8, ?ERR_CODE_WRITE_COILS:8, Err_code:8>>} ->
-                    Res =
-                    try
-                        Mod:message(#write_coils_status{transaction_id = TransId, device_number = Dev_num, error_code = Err_code}, S#state.state)
-                    catch
-                        throw:R -> {ok, R};
-                        C:R:Stacktrace -> {'EXIT', C, R, Stacktrace}
-                    end,
-                    case Res of
-                        {ok, Command, S2} ->
-                            cmd(T ++ Command, S#state{state = S2});
-                        {stop, _Reason, Command, S2} ->
-                            cmd(T ++ Command, S#state{stage = stop, state = S2});
-                        {'EXIT', Class, Reason, Strace} ->
-                            erlang:raise(Class, Reason, Strace)
-                    end;
-                {ok, _Else} ->
-                    cmd(T, S);
-                {error, Reason} ->
-                    Res =
-                    try
-                        Mod:message({error, Reason}, S#state.state)
-                    catch
-                        throw:R -> {ok, R};
-                        C:R:Stacktrace -> {'EXIT', C, R, Stacktrace}
-                    end,
-                    case Res of
-                        {ok, Command, S2} ->
-                            cmd(T ++ Command, S#state{state = S2});
-                        {stop, _Reason, Command, S2} ->
-                            cmd(T ++ Command, S#state{stage = stop, state = S2});
-                        {'EXIT', Class, Reason, Strace} ->
-                            erlang:raise(Class, Reason, Strace)
-                    end
-            end;
+            cmd(T, S);
         {error, Reason} ->
             gen_tcp:close(Socket),
             S2 = S#state{sock_info = #sock_info{socket = undefined, connection = close}},

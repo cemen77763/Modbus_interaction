@@ -35,7 +35,7 @@ stop() ->
     gen_modbus:stop(?SERVER).
 
 init([]) ->
-    ChangeSopts = #change_sock_opts{active = true, reuseaddr = true, nodelay = true},
+    ChangeSopts = #change_sock_opts{reuseaddr = true, nodelay = true},
     Connect = #connect{ip_addr = "localhost", port = 5000},
     {ok, [ChangeSopts, Connect], 5}.
 

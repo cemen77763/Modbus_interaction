@@ -1,4 +1,15 @@
 
+-type cmd() ::
+    record:connect() |
+    record:disconnect() |
+    record:change_sock_opts() |
+    record:read_register() |
+    record:read_status() |
+    record:write_holding_register() |
+    record:write_holding_registers() |
+    record:write_coil_status() |
+    record:write_coils_status().
+
 -record(sock_info, {
     socket :: gen_tcp:socket(),
     connection :: close | open,
@@ -17,7 +28,6 @@
     }).
 
 -record(change_sock_opts, {
-    active :: true | false | once | -32768..32767,
     reuseaddr :: boolean(),
     nodelay :: boolean(),
     ifaddr :: inet | inet6
