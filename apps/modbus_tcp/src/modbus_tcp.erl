@@ -135,9 +135,6 @@ handle_continue(_Info, State) ->
 handle_info(_Info, State) ->
     {noreply, [], State}.
 
-handle_cast(write, State) ->
-    {noreply, [], State};
-
 handle_cast(_Request, State) ->
     {noreply, [], State}.
 

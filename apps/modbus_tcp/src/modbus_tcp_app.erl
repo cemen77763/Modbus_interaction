@@ -44,7 +44,6 @@ init([]) ->
         strategy => one_for_all,
         intensity => 1,
         period => 1000},
-
     ChildSpecs = [#{
         id => modbus_tcp,
         start => {modbus_tcp, start, []},
@@ -52,7 +51,6 @@ init([]) ->
         shutdown => 1000,
         type => worker,
         modules => []}],
-
     {ok, {SupFlags, ChildSpecs}}.
 
 
