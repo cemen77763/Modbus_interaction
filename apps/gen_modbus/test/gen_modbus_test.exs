@@ -1,18 +1,26 @@
 defmodule GenModbusTest do
     use ExUnit.Case
     require Record
-    Record.defrecord(:sock_info,
-        socket: 1,
-        port: 502)
 
     Record.defrecord(:state,
-        state: :undefined,
+        state: :state,
         mod: :modbus_tcp,
-        sock_info: :undefined,
+        sock_info: Record.defrecord(:sock_info,
+            socket: :undefined,
+            ip_addr: :undefined,
+            port: :undefined
+            ),
         sock_opts: :undefined,
         buffer: <<>>,
-        stage: :disconnect
+        stage: :init
         )
+
+    test "test handle" do
+        assert :gen_modbus.handle_call(:msg, self(), state()) == {:reply, :msg, state()}
+        assert :gen_modbus.handle_continue(:msg, state()) == {:noreply, state()}
+        assert :gen_modbus.handle_info(:msg, state()) == {:noreply, state()}
+        assert :gen_modbus.handle_cast(:msg, state()) == {:noreply, state()}
+    end
 
     test "Modbus код функции 03 (чтение Holding reg)" do
         assert :gen_modbus.handle_info({:tcp, :socket, <<2::16, 0::16, 7::16, 1::8, 3::8, 4::8, 25::16, 2::16>>}, state()) ==
@@ -41,6 +49,8 @@ defmodule GenModbusTest do
 
     test "Modbus код функции 05 (запись Coil status)" do
         assert :gen_modbus.handle_info({:tcp, :socket, <<13::16, 0::16, 6::16, 3::8, 5::8, 12::16, 0::16>>}, state()) ==
+        {:noreply, state()}
+        assert :gen_modbus.handle_info({:tcp, :socket, <<13::16, 0::16, 6::16, 3::8, 5::8, 12::16, 255::8, 0::8>>}, state()) ==
         {:noreply, state()}
     end
 
@@ -101,6 +111,9 @@ defmodule GenModbusTest do
         assert :gen_modbus.handle_info({:tcp, :socket, <<0::8>>}, state(buffer: <<1::16, 0::16>>)) ==
         {:noreply, state(buffer: <<1::16, 0::16, 0::8>>)}
 
+        assert :gen_modbus.handle_info({:tcp, :socket, <<40::16, 1::16, 0::16, 6::16, 1::8, 6::8, 1::16, 55::16, 1::16>>}, state(buffer: <<1::16, 0::16, 6::16, 1::8, 6::8, 1::16>>)) ==
+        {:noreply, state(buffer: <<1::16>>)}
+
         assert :gen_modbus.handle_info({:tcp, :socket, <<16::8>>}, state(buffer: <<1::16, 0::16, 0::8>>)) ==
         {:noreply, state(buffer: <<1::16, 0::16, 16::16>>)}
 
@@ -111,11 +124,11 @@ defmodule GenModbusTest do
         {:noreply, state(buffer: <<>>)}
     end
 
-    test "получения двух склееных ответов от slave" do
+    test "получение двух склееных ответов от slave" do
         assert :gen_modbus.handle_info({:tcp, :socket, <<1::16, 0::16, 6::16, 1::8, 6::8, 1::16, 55::16, 1::16, 0::16, 6::16, 1::8, 6::8, 1::16, 55::16, 8::16, 1::8>>}, state()) ==
-        {:noreply, state(buffer: <<>>)}
+        {:noreply, state(buffer: <<8::16, 1::8>>)}
 
         assert :gen_modbus.handle_info({:tcp, :socket, <<1::16, 0::16, 6::16, 1::8, 6::8, 1::16, 55::16, 1::16, 0::16, 3::16, 1::8, 144::8, 1::8, 34::24>>}, state()) ==
-        {:noreply, state(buffer: <<>>)}
+        {:noreply, state(buffer: <<34::24>>)}
     end
 end

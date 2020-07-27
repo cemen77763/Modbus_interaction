@@ -6,7 +6,6 @@ defmodule ModbusTcpTest do
 
     Record.defrecord(:sock_info,
         socket: :undefined,
-        conection: :undefined,
         ip_addr: 'localhost',
         port: 502)
 
@@ -58,7 +57,7 @@ defmodule ModbusTcpTest do
         transaction_id: 1,
         device_number: 2,
         register_number: 1,
-        registers_value: 1,
+        registers_value: 0,
         error_code: :undefined)
 
     Record.defrecord(:write_coils_status,
@@ -66,7 +65,7 @@ defmodule ModbusTcpTest do
         device_number: 2,
         register_number: 2,
         quantity: 4,
-        registers_value: 10,
+        registers_value: 15,
         error_code: :undefined)
 
     test "decryption error code" do

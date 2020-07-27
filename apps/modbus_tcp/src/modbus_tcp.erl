@@ -101,7 +101,7 @@ message(#write_holding_registers{device_number = Dev_num, register_number = Reg_
     WriteCoil = #write_coil_status{
         device_number = 2,
         register_number = 1,
-        register_value = 1},
+        register_value = 0},
     io:format("~nWriting holding registers~ndevice: ~w~nfirst register: ~w~ndata: ~w~n~n", [Dev_num, Reg_num, Ldata]),
     {ok, [WriteCoil], State};
 
@@ -110,7 +110,7 @@ message(#write_coil_status{device_number = Dev_num, register_number = Reg_num, r
         device_number = 2,
         register_number = 2,
         quantity = 4,
-        registers_value = 2#1010},
+        registers_value = 2#1111},
     io:format("~nWriting coil status~ndevice: ~w~nfirst register: ~w~ndata: ~w~n~n", [Dev_num, Reg_num, Data]),
     {ok, [WriteCoils], State};
 
