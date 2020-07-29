@@ -19,7 +19,7 @@ defmodule ModbusTcp.MixProject do
     def application do
         [
         mod: {:modbus_tcp_app, []},
-        registered: [:gen_modbus],
+        registered: [:gen_master, :gen_slave],
         description: ['Application to interact with modbus TCP devices'],
         licenses: ['Apache 2.0'],
         included_applications: [:gen_modbus]

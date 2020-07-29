@@ -18,7 +18,7 @@ defmodule GenModbus.MixProject do
     # Run "mix help compile.app" to learn about applications.
     def application do
         [
-        registered: [:gen_modbus],
+        registered: [:gen_master, :gen_slave],
         description: ['Behaviour to interact with modbus TCP devices'],
         licenses: ['Apache 2.0']
         ]

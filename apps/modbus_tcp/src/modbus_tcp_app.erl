@@ -17,13 +17,16 @@
 -export([
     init/1]).
 
--define(SERVER, gen_modbus).
+-define(MASTER, gen_master).
+
+-define(SLAVE, gen_slave).
 
 start(_StartType, _StartArgs) ->
     start_link().
 
 stop(_State) ->
-    gen_modbus:stop(?SERVER).
+    gen_slave:stop(?SLAVE),
+    gen_master:stop(?MASTER).
 
 start_link() ->
     supervisor:start_link({local, ?MODULE}, ?MODULE, []).
@@ -41,15 +44,24 @@ start_link() ->
 init([]) ->
     SupFlags = #{
         strategy => one_for_all,
-        intensity => 1,
+        intensity => 2,
         period => 1000},
-    ChildSpecs = [#{
-        id => modbus_tcp,
-        start => {modbus_tcp, start, []},
+    ChildSpecs = [
+        #{
+        id => modbus_slave,
+        start => {modbus_slave, start, []},
         restart => permanent,
         shutdown => 1000,
         type => worker,
-        modules => []}],
+        modules => []},
+        #{
+        id => modbus_master,
+        start => {modbus_master, start, []},
+        restart => permanent,
+        shutdown => 1000,
+        type => worker,
+        modules => []}
+        ],
     {ok, {SupFlags, ChildSpecs}}.
 
 

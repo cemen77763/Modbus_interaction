@@ -34,7 +34,7 @@
 
 -record(read_register, {
     type :: holding | input,
-    transaction_id = 1,
+    transaction_id :: integer(),
     device_number :: integer() | undefined,
     register_number :: integer() | undefined,
     quantity :: integer() | undefined,
@@ -44,7 +44,7 @@
 
 -record(read_status, {
     type :: coil | input,
-    transaction_id = 1,
+    transaction_id :: integer(),
     device_number :: integer() | undefined,
     register_number :: integer() | undefined,
     quantity :: integer() | undefined,
@@ -53,7 +53,7 @@
     }).
 
 -record(write_holding_register, {
-    transaction_id = 1,
+    transaction_id :: integer(),
     device_number :: integer() | undefined,
     register_number :: integer() | undefined,
     register_value :: number() | undefined,
@@ -61,7 +61,7 @@
     }).
 
 -record(write_holding_registers, {
-    transaction_id = 1,
+    transaction_id :: integer(),
     device_number :: integer() | undefined,
     register_number :: integer() | undefined,
     registers_value :: list() | undefined,
@@ -69,7 +69,7 @@
     }).
 
 -record(write_coil_status, {
-    transaction_id = 1,
+    transaction_id :: integer(),
     device_number :: integer() | undefined,
     register_number :: integer() | undefined,
     register_value :: 0 | 1 | undefined,
@@ -77,7 +77,7 @@
     }).
 
 -record(write_coils_status, {
-    transaction_id = 1,
+    transaction_id :: integer(),
     device_number :: integer() | undefined,
     register_number :: integer() | undefined,
     quantity :: integer() | undefined,
