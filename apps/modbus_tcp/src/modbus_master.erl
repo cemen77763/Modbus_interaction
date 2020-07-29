@@ -64,14 +64,20 @@ disconnect(Reason, S) ->
     {ok, [], S}.
 
 message(#read_register{type = holding, device_number = Dev_num, register_number = Reg_num, registers_value = Ldata}, S) ->
-    ReadIreg = #read_register{
+    _ReadIreg = #read_register{
         transaction_id = 1,
         type = input,
         device_number = 2,
         register_number = 1,
         quantity = 5},
+    ReadCoils = #read_status{
+        transaction_id = 1,
+        type = coil,
+        device_number = 2,
+        register_number = 1,
+        quantity = 5},
     io:format("~nReading holding registers~ndevice: ~w~nfirst register:~w~ndata: ~w~n~n", [Dev_num, Reg_num, Ldata]),
-    {ok, [ReadIreg], S};
+    {ok, [ReadCoils], S};
 
 message(#read_register{type = input, device_number = Dev_num, register_number = Reg_num, registers_value = Ldata}, S) ->
     ReadCoils = #read_status{
@@ -111,7 +117,7 @@ message(#write_holding_registers{device_number = Dev_num, register_number = Reg_
     WriteCoil = #write_coil_status{
         transaction_id = 1,
         device_number = 2,
-        register_number = 1,
+        register_number = 3,
         register_value = 0},
     io:format("~nWriting holding registers~ndevice: ~w~nfirst register: ~w~ndata: ~w~n~n", [Dev_num, Reg_num, Ldata]),
     {ok, [WriteCoil], S};

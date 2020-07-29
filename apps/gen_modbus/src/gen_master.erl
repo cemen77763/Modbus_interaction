@@ -511,12 +511,12 @@ cmd_connect(T, #state{stage = {stop, Reason}} = S, {Ip_addr, Port}) ->
         {error, Reason} ->
             cmd_disconnect(T, Reason, S#state{stage = {stop, Reason}})
     end;
-cmd_connect(T, S, {Ip_addr, Port}) ->
-    case {_, Socket} = gen_tcp:connect(Ip_addr, Port, S#state.sock_opts) of
+cmd_connect(T, S, {IpAddr, Port}) ->
+    case {_, Socket} = gen_tcp:connect(IpAddr, Port, S#state.sock_opts) of
         {ok, _} ->
             S2 = S#state{sock_info = #sock_info{
                 socket = Socket,
-                ip_addr = Ip_addr,
+                ip_addr = IpAddr,
                 port = Port}},
             case connect_it(S2) of
                 {ok, Command, S3} ->
@@ -551,11 +551,11 @@ write_hreg(T, {Id, DevNum, RegNum, Value}, #state{send_buff = Buff} = S) ->
     cmd(T, S#state{send_buff = <<Buff/binary, Packet/binary>>}).
 
 write_hregs(T, {Id, DevNum, RegNum, Values}, #state{send_buff = Buff} = S) ->
-    Reg_quantity = length(Values),
-    Len = Reg_quantity * 2,
+    RegQuantity = length(Values),
+    Len = RegQuantity * 2,
     Mbap_len = (7 + Len),
-    Packet_without_values = <<Id:16, 0:16, Mbap_len:16, DevNum:8, ?FUN_CODE_WRITE_HREGS:8, RegNum:16, Reg_quantity:16, Len:8>>,
-    Packet = list_to_bin16(Values, Packet_without_values),
+    PacketWithoutValues = <<Id:16, 0:16, Mbap_len:16, DevNum:8, ?FUN_CODE_WRITE_HREGS:8, RegNum:16, RegQuantity:16, Len:8>>,
+    Packet = list_to_bin16(Values, PacketWithoutValues),
     cmd(T, S#state{send_buff = <<Buff/binary, Packet/binary>>}).
 
 write_creg(T, {Id, DevNum, RegNum, 0}, #state{send_buff = Buff} = S) ->
@@ -585,48 +585,48 @@ change_sopts(Opts, S) ->
     S#state{sock_opts = SockOpts}.
 
 parser(Chunk, #state{recv_buff = Buffer} = S) ->
-    parse_(<<Buffer/binary, Chunk/binary>>, {ok, [], S#state.state}, S).
+    parser_(<<Buffer/binary, Chunk/binary>>, {ok, [], S#state.state}, S).
 
-parse_(<<Id:16, 0:16, MsgLen:16, Payload:MsgLen/binary, Tail/binary>>, Res, S) ->
+parser_(<<Id:16, 0:16, MsgLen:16, Payload:MsgLen/binary, Tail/binary>>, Res, S) ->
     case Res of
         {ok, Command, S2} ->
             case cmd(Command, S#state{state = S2, recv_buff = Tail}) of
                 {stop, _Reason, S3} ->
-                    parse_function_(Id, Payload, S3);
+                    parser__(Id, Payload, S3);
                 S3 ->
-                    parse_function_(Id, Payload, S3)
+                    parser__(Id, Payload, S3)
             end;
         {stop, Reason, Command, S2} ->
             {stop, _, S3} = cmd(Command, S#state{recv_buff = Tail, stage = {stop, Reason}, state = S2}),
-            parse_function_(Id, Payload, S3);
+            parser__(Id, Payload, S3);
         {'EXIT', Class, Reason, Strace} ->
             erlang:raise(Class, Reason, Strace)
     end;
 
-parse_(Buffer, Res, S) ->
+parser_(Buffer, Res, S) ->
     msg_resp(Res, S#state{recv_buff = Buffer}).
 
-parse_function_(Id, <<DevNum:8, ?FUN_CODE_READ_HREGS:8, Len:8, BinData:Len/binary>>, S) ->
+parser__(Id, <<DevNum:8, ?FUN_CODE_READ_HREGS:8, Len:8, BinData:Len/binary>>, S) ->
     LData = bin_to_list16(BinData, []),
     Msg = #read_register{type = holding, transaction_id = Id, device_number = DevNum, registers_value = LData},
     message(Msg, S);
-parse_function_(Id, <<DevNum:8, ?FUN_CODE_READ_IREGS:8, Len:8, BinData:Len/binary>>, S) ->
+parser__(Id, <<DevNum:8, ?FUN_CODE_READ_IREGS:8, Len:8, BinData:Len/binary>>, S) ->
     LData = bin_to_list16(BinData, []),
     Msg = #read_register{type = input, transaction_id = Id, device_number = DevNum, registers_value = LData},
     message(Msg, S);
-parse_function_(Id, <<DevNum:8, ?FUN_CODE_READ_COILS:8, Len:8, BinData:Len/binary>>, S) ->
+parser__(Id, <<DevNum:8, ?FUN_CODE_READ_COILS:8, Len:8, BinData:Len/binary>>, S) ->
     Msg = #read_status{type = coil, transaction_id = Id, device_number = DevNum, registers_value = <<BinData:Len/binary>>},
     message(Msg, S);
-parse_function_(Id, <<DevNum:8, ?FUN_CODE_READ_INPUTS:8, Len:8, BinData:Len/binary>>, S) ->
+parser__(Id, <<DevNum:8, ?FUN_CODE_READ_INPUTS:8, Len:8, BinData:Len/binary>>, S) ->
     Msg = #read_status{type = input, transaction_id = Id, device_number = DevNum, registers_value = <<BinData:Len/binary>>},
     message(Msg, S);
-parse_function_(Id, <<DevNum:8, ?FUN_CODE_WRITE_HREG:8, RegNum:16, Value:16>>, S) ->
+parser__(Id, <<DevNum:8, ?FUN_CODE_WRITE_HREG:8, RegNum:16, Value:16>>, S) ->
     Msg = #write_holding_register{transaction_id = Id, device_number = DevNum, register_number = RegNum, register_value = Value},
     message(Msg, S);
-parse_function_(Id, <<DevNum:8, ?FUN_CODE_WRITE_HREGS:8, RegNum:16, _:16>>, S) ->
+parser__(Id, <<DevNum:8, ?FUN_CODE_WRITE_HREGS:8, RegNum:16, _:16>>, S) ->
     Msg = #write_holding_registers{transaction_id = Id, device_number = DevNum, register_number = RegNum},
     message(Msg, S);
-parse_function_(Id, <<DevNum:8, ?FUN_CODE_WRITE_COIL:8, RegNum:16, Var:16>>, S) ->
+parser__(Id, <<DevNum:8, ?FUN_CODE_WRITE_COIL:8, RegNum:16, Var:16>>, S) ->
     Value =
     case <<Var:16>> of
         <<0:16>> -> 0;
@@ -634,32 +634,32 @@ parse_function_(Id, <<DevNum:8, ?FUN_CODE_WRITE_COIL:8, RegNum:16, Var:16>>, S) 
     end,
     Msg = #write_coil_status{transaction_id = Id, device_number = DevNum, register_number = RegNum, register_value = Value},
     message(Msg, S);
-parse_function_(Id, <<DevNum:8, ?FUN_CODE_WRITE_COILS:8, RegNum:16, Quantity:16>>, S) ->
+parser__(Id, <<DevNum:8, ?FUN_CODE_WRITE_COILS:8, RegNum:16, Quantity:16>>, S) ->
     Msg = #write_coils_status{transaction_id = Id, device_number = DevNum, register_number = RegNum, quantity = Quantity},
     message(Msg, S);
 
-parse_function_(Id, <<DevNum:8, ?ERR_CODE_READ_IREGS:8, Err_code:8>>, S) ->
+parser__(Id, <<DevNum:8, ?ERR_CODE_READ_IREGS:8, Err_code:8>>, S) ->
     Msg = #read_register{transaction_id = Id, type = input, device_number = DevNum, error_code = Err_code},
     message(Msg, S);
-parse_function_(Id, <<DevNum:8, ?ERR_CODE_READ_HREGS:8, Err_code:8>>, S) ->
+parser__(Id, <<DevNum:8, ?ERR_CODE_READ_HREGS:8, Err_code:8>>, S) ->
     Msg = #read_register{transaction_id = Id, type = holding, device_number = DevNum, error_code = Err_code},
     message(Msg, S);
-parse_function_(Id, <<DevNum:8, ?ERR_CODE_READ_COILS:8, Err_code:8>>, S) ->
+parser__(Id, <<DevNum:8, ?ERR_CODE_READ_COILS:8, Err_code:8>>, S) ->
     Msg = #read_status{transaction_id = Id, type = coil, device_number = DevNum, error_code = Err_code},
     message(Msg, S);
-parse_function_(Id, <<DevNum:8, ?ERR_CODE_READ_INPUTS:8, Err_code:8>>, S) ->
+parser__(Id, <<DevNum:8, ?ERR_CODE_READ_INPUTS:8, Err_code:8>>, S) ->
     Msg = #read_status{transaction_id = Id, type = input, device_number = DevNum, error_code = Err_code},
     message(Msg, S);
-parse_function_(Id, <<DevNum:8, ?ERR_CODE_WRITE_HREG:8, Err_code:8>>, S) ->
+parser__(Id, <<DevNum:8, ?ERR_CODE_WRITE_HREG:8, Err_code:8>>, S) ->
     Msg = #write_holding_register{transaction_id = Id, device_number = DevNum, error_code = Err_code},
     message(Msg, S);
-parse_function_(Id, <<DevNum:8, ?ERR_CODE_WRITE_HREGS:8, Err_code:8>>, S) ->
+parser__(Id, <<DevNum:8, ?ERR_CODE_WRITE_HREGS:8, Err_code:8>>, S) ->
     Msg = #write_holding_registers{transaction_id = Id, device_number = DevNum, error_code = Err_code},
     message(Msg, S);
-parse_function_(Id, <<DevNum:8, ?ERR_CODE_WRITE_COIL:8, Err_code:8>>, S) ->
+parser__(Id, <<DevNum:8, ?ERR_CODE_WRITE_COIL:8, Err_code:8>>, S) ->
     Msg = #write_coil_status{transaction_id = Id, device_number = DevNum, error_code = Err_code},
     message(Msg, S);
-parse_function_(Id, <<DevNum:8, ?ERR_CODE_WRITE_COILS:8, Err_code:8>>, S) ->
+parser__(Id, <<DevNum:8, ?ERR_CODE_WRITE_COILS:8, Err_code:8>>, S) ->
     Msg = #write_coils_status{transaction_id = Id, device_number = DevNum, error_code = Err_code},
     message(Msg, S).
 
@@ -672,7 +672,7 @@ message(RegFun, S) ->
         throw:R -> {ok, R};
         C:R:Stacktrace -> erlang:raise(C, R, Stacktrace)
     end,
-    parse_(S#state.recv_buff, Res, S).
+    parser_(S#state.recv_buff, Res, S).
 
 bin_to_list16(<<>>, Acc) ->
     lists:reverse(Acc);
