@@ -2,7 +2,7 @@ defmodule ModbusTcpTest do
     use ExUnit.Case
     require Record
 
-    :application.stop(:modbus_tcp)
+    :application.stop(:modbus_master)
 
     Record.defrecord(:sock_info,
         socket: :undefined,
@@ -83,13 +83,13 @@ defmodule ModbusTcpTest do
     end
 
     test "test connect" do
-        assert :modbus_tcp.connect(sock_info(), :state) ==
+        assert :modbus_master.connect(sock_info(), :state) ==
         {:ok, [write_holding_register()], :state}
-        assert :modbus_tcp.connect(["localhost", 502], :state) == {:ok, [], :state}
+        assert :modbus_master.connect(["localhost", 502], :state) == {:ok, [], :state}
     end
 
     test "test disconnect" do
-        assert :modbus_tcp.disconnect(:normal, :state) == {:ok, [], :state}
+        assert :modbus_master.disconnect(:normal, :state) == {:ok, [], :state}
     end
 
     test "start/stop application" do
@@ -98,35 +98,35 @@ defmodule ModbusTcpTest do
     end
 
     test "test handle" do
-        assert :modbus_tcp.handle_call(:msg, self(), :state) == {:reply, :msg, [], :state}
-        assert :modbus_tcp.handle_continue(:msg, :state) == {:noreply, [], :state}
-        assert :modbus_tcp.handle_info(:msg, :state) == {:noreply, [], :state}
-        assert :modbus_tcp.handle_cast(:msg, :state) == {:noreply, [], :state}
+        assert :modbus_master.handle_call(:msg, self(), :state) == {:reply, :msg, [], :state}
+        assert :modbus_master.handle_continue(:msg, :state) == {:noreply, [], :state}
+        assert :modbus_master.handle_info(:msg, :state) == {:noreply, [], :state}
+        assert :modbus_master.handle_cast(:msg, :state) == {:noreply, [], :state}
     end
 
     test "message" do
-        assert :modbus_tcp.message(read_register(type: :holding, transaction_id: 1), :state) ==
+        assert :modbus_master.message(read_register(type: :holding, transaction_id: 1), :state) ==
         {:ok, [read_register(type: :input, device_number: 2, register_number: 1, quantity: 5, registers_value: :undefined)], :state}
 
-        assert :modbus_tcp.message(read_register(type: :input), :state) ==
+        assert :modbus_master.message(read_register(type: :input), :state) ==
         {:ok, [read_status(type: :coil)], :state}
 
-        assert :modbus_tcp.message(read_status(type: :input), :state) ==
+        assert :modbus_master.message(read_status(type: :input), :state) ==
         {:ok, [disconnect()], :state}
 
-        assert :modbus_tcp.message(read_status(type: :coil), :state) ==
+        assert :modbus_master.message(read_status(type: :coil), :state) ==
         {:ok, [read_status(type: :input, register_number: 12)], :state}
 
-        assert :modbus_tcp.message(write_holding_register(), :state) ==
+        assert :modbus_master.message(write_holding_register(), :state) ==
         {:ok, [write_holding_registers()], :state}
 
-        assert :modbus_tcp.message(write_holding_registers(), :state) ==
+        assert :modbus_master.message(write_holding_registers(), :state) ==
         {:ok, [write_coil_status()], :state}
 
-        assert :modbus_tcp.message(write_coil_status(), :state) ==
+        assert :modbus_master.message(write_coil_status(), :state) ==
         {:ok, [write_coils_status()], :state}
 
-        assert :modbus_tcp.message(write_coils_status(), :state) ==
+        assert :modbus_master.message(write_coils_status(), :state) ==
         {:ok, [read_register(type: :holding)], :state}
     end
 end

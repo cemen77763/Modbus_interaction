@@ -8,7 +8,9 @@
     record:write_holding_register() |
     record:write_holding_registers() |
     record:write_coil_status() |
-    record:write_coils_status().
+    record:write_coils_status() |
+    record:wait_connect() |
+    record:alarm().
 
 -record(sock_info, {
     socket :: gen_tcp:socket() | undefined,
@@ -16,7 +18,7 @@
     port :: inet:port_number() | undefined
     }).
 
-%%% ------------------------- COMMANDS RECORDS -------------------------
+%%% ------------------------- GEN MASTER COMMANDS RECORDS -------------------------
 -record(connect, {
     ip_addr :: inet:socket_address() | inet:hostname(),
     port :: inet:port_number()
@@ -84,8 +86,21 @@
     registers_value :: binary() | undefined,
     error_code :: integer() | undefined
     }).
-%%% ------------------------- COMMANDS RECORDS -------------------------
+%%% ------------------------- GEN MASTER COMMANDS RECORDS -------------------------
 
+%%% ------------------------- GEN SLAVE COMMANDS RECORDS --------------------------
+
+-record(wait_connect, {
+    ip_addr :: inet:socket_address() | inet:hostname() | undefined,
+    port :: inet:port_number() | undefined
+    }).
+
+-record(alarm, {
+    type :: 1 | 2 | 3 | 4 | 5,
+    status :: on | off
+    }).
+
+%%% ------------------------- GEN SLAVE COMMANDS RECORDS --------------------------
 -define(FUN_CODE_READ_COILS,    16#01).
 -define(FUN_CODE_READ_INPUTS,   16#02).
 -define(FUN_CODE_READ_HREGS,    16#03).

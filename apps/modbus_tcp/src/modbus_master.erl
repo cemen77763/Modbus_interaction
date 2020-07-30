@@ -52,32 +52,29 @@ connect(#sock_info{ip_addr = Ip_addr, port = Port}, S) ->
         register_number = 1,
         register_value = 1},
     io:format("Connection fine Ip addr: ~w Port ~w~n", [Ip_addr, Port]),
-    {ok, [WriteHreg], S};
-
-connect(_sock_info, S) ->
-    {ok, [], S}.
+    {ok, [WriteHreg], S}.
 
 disconnect(Reason, S) ->
-    io:format("Disconected because ~w.~n", [Reason]),
+    io:format("Disconected master because ~w.~n", [Reason]),
     _Connect = #connect{ip_addr = "localhost", port = 5000},
     _Disconnect = #disconnect{reason = normal},
     {ok, [], S}.
 
 message(#read_register{type = holding, device_number = Dev_num, register_number = Reg_num, registers_value = Ldata}, S) ->
-    _ReadIreg = #read_register{
+    ReadIreg = #read_register{
         transaction_id = 1,
         type = input,
         device_number = 2,
         register_number = 1,
         quantity = 5},
-    ReadCoils = #read_status{
+    _ReadCoils = #read_status{
         transaction_id = 1,
         type = coil,
         device_number = 2,
         register_number = 1,
         quantity = 5},
     io:format("~nReading holding registers~ndevice: ~w~nfirst register:~w~ndata: ~w~n~n", [Dev_num, Reg_num, Ldata]),
-    {ok, [ReadCoils], S};
+    {ok, [ReadIreg], S};
 
 message(#read_register{type = input, device_number = Dev_num, register_number = Reg_num, registers_value = Ldata}, S) ->
     ReadCoils = #read_status{
@@ -96,13 +93,14 @@ message(#read_status{type = coil, device_number = Dev_num, register_number = Reg
         device_number = 2,
         register_number = 12,
         quantity = 5},
+    _Disconnect = #disconnect{reason = normal},
     io:format("~nReading coils status~ndevice: ~w~nfirst register: ~w~ndata: ~w~n~n", [Dev_num, Reg_num, Bdata]),
     {ok, [ReadInput], S};
 
 message(#read_status{type = input, device_number = Dev_num, register_number = Reg_num, quantity = _Quantity, registers_value = Bdata}, S) ->
-    _Disconnect = #disconnect{reason = normal},
+    Disconnect = #disconnect{reason = normal},
     io:format("~nReading inputs status~ndevice: ~w~nfirst register: ~w~ndata: ~w~n~n", [Dev_num, Reg_num, Bdata]),
-    {ok, [], S};
+    {ok, [Disconnect], S};
 
 message(#write_holding_register{device_number = Dev_num, register_number = Reg_num, register_value = Ldata}, S) ->
     WriteHregs = #write_holding_registers{
