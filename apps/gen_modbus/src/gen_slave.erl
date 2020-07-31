@@ -262,7 +262,7 @@ handle_cast({connect, Sock}, S) ->
     {noreply, S2};
 
 handle_cast({connect, error, Reason}, S) ->
-    Res = disconnect_it(Reason, S),
+    Res = disconnect_it(S#state.active_socks, Reason, S),
     msg_resp(Res, S#state{stage = disconnect, buff = <<>>, active_socks = [undefined]});
 
 handle_cast(Msg, S) ->
@@ -403,7 +403,7 @@ handle_info({tcp, Socket, Data}, S) when [Socket] =:= S#state.active_socks ->
 
 handle_info({tcp_closed, Socket}, S) when [Socket] =:= S#state.active_socks ->
     gen_tcp:close(Socket),
-    Res = disconnect_it(connection_closed, S),
+    Res = disconnect_it(Socket, connection_closed, S),
     msg_resp(Res, S#state{stage = disconnect, buff = <<>>, active_socks = [undefined]});
 
 handle_info(Info, S) ->
@@ -439,7 +439,7 @@ handle_info(Info, S) ->
 terminate(Reason, S) ->
     Mod = S#state.mod,
     gen_tcp:close(S#state.listen_sock),
-    case disconnect_it(shutdown, S) of
+    case disconnect_it(S#state.active_socks, shutdown, S) of
         {ok, Command, SS} ->
             S2 = cmd(Command, S#state{active_socks = [], buff = <<>>, stage = disconnect, state = SS}),
             terminate_it(Mod, Reason, S2);
@@ -463,10 +463,10 @@ terminate_it(Mod, Reason, S) ->
             ok
     end.
 
-disconnect_it(Reason, S) ->
+disconnect_it(Socket, Reason, S) ->
     Mod = S#state.mod,
     try
-        Mod:disconnect(Reason, S#state.state)
+        Mod:disconnect(Socket, Reason, S#state.state)
     catch
         throw:R -> {ok, R};
         C:R:Stacktrace -> {'EXIT', C, R, Stacktrace}
@@ -523,7 +523,7 @@ wait_connect(From, LSock) ->
     end.
 
 cmd_disconnect(T, Reason, #state{stage = {stop, Reason}} = S) ->
-    case disconnect_it(Reason, S) of
+    case disconnect_it(S#state.active_socks, Reason, S) of
         {ok, Command, SS} ->
             cmd(Command ++ T, S#state{state = SS, stage = disconnect});
         {stop, _Reason, Command, SS} ->
@@ -532,7 +532,7 @@ cmd_disconnect(T, Reason, #state{stage = {stop, Reason}} = S) ->
             erlang:raise(Class, Reason2, Strace)
     end;
 cmd_disconnect(T, Reason, #state{stage = {stop, Reason}} = S) ->
-    case disconnect_it(Reason, S) of
+    case disconnect_it(S#state.active_socks, Reason, S) of
         {ok, Command, SS} ->
             cmd(Command ++ T, S#state{state = SS, stage = {stop, Reason}});
         {stop, _Reason, Command, SS} ->
