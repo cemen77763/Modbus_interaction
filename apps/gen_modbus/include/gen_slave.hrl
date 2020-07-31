@@ -1,7 +1,8 @@
 -type cmd() ::
     records:disconnect() |
     records:alarm() |
-    wait_connect.
+    wait_connect |
+    {stop, Reason :: term()}.
 
 %%% ------------------------- GEN SLAVE COMMANDS RECORDS --------------------------
 

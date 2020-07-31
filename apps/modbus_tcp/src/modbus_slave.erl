@@ -8,6 +8,8 @@
 
 -include("../../gen_modbus/include/gen_slave.hrl").
 
+-define(DEFAULT_DEVICE_NUM, 2).
+
 -define(DEFAULT_SOCK_OPTS, [
     inet,
     binary,
@@ -17,7 +19,13 @@
     {nodelay, true}
     ]).
 
+-record(s, {
+    allowed_connections :: integer()
+    }).
+
 -define(SERVER, gen_slave).
+
+-define(PORT, 5000).
 
 -export([
     start/0,
@@ -37,20 +45,26 @@
     ]).
 
 start() ->
-    gen_slave:start_link({local, ?SERVER}, ?MODULE, [], []).
+    gen_slave:start_link({local, ?SERVER}, ?MODULE, [?PORT, ?DEFAULT_DEVICE_NUM], []).
 
 stop() ->
     gen_slave:stop(?SERVER).
 
 init([]) ->
-    {ok, [wait_connect], 5}.
+    {ok, [wait_connect], #s{allowed_connections = 5}}.
 
-connect(_SockInfo, S) ->
-    {ok, [], S}.
+connect(Socket, #s{allowed_connections = Connections} = S) ->
+    case (Connections - 1) =/= 0 of
+        true ->
+            io:format("Connected to ~w...~n", [Socket]),
+            {ok, [], S#s{allowed_connections = Connections - 1}};
+        _ ->
+            io:format("Connections limit reached~n")
+    end.
 
-disconnect(_Socket, Reason, S) ->
-    io:format("Disconected slave because ~w.~n", [Reason]),
-    {ok, [wait_connect], S}.
+disconnect(Socket, Reason, #s{allowed_connections = Connections} = S) ->
+    io:format("Disconected because ~w from ~w.~n", [Reason, Socket]),
+    {ok, [wait_connect], S#s{allowed_connections = Connections + 1}}.
 
 message(RegInfo, S) ->
     io:format("Reg info is ~w~n", [RegInfo]),
