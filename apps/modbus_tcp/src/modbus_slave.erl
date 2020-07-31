@@ -6,7 +6,7 @@
 
 -behaviour(gen_slave).
 
--include("../../gen_modbus/include/gen_modbus.hrl").
+-include("../../gen_modbus/include/gen_slave.hrl").
 
 -define(DEFAULT_SOCK_OPTS, [
     inet,
@@ -31,7 +31,7 @@
     handle_continue/2,
     handle_info/2,
     handle_cast/2,
-    disconnect/2,
+    disconnect/3,
     message/2,
     terminate/2
     ]).
@@ -43,16 +43,17 @@ stop() ->
     gen_slave:stop(?SERVER).
 
 init([]) ->
-    {ok, [#wait_connect{}], 5}.
+    {ok, [wait_connect], 5}.
 
 connect(_SockInfo, S) ->
     {ok, [], S}.
 
-disconnect(Reason, S) ->
+disconnect(_Socket, Reason, S) ->
     io:format("Disconected slave because ~w.~n", [Reason]),
-    {ok, [#wait_connect{}], S}.
+    {ok, [wait_connect], S}.
 
-message(_RegInfo, S) ->
+message(RegInfo, S) ->
+    io:format("Reg info is ~w~n", [RegInfo]),
     {ok, [], S}.
 
 handle_call(Msg, _From, S) ->

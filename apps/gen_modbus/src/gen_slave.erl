@@ -7,8 +7,7 @@
 -behaviour(gen_server).
 
 -include("../include/gen_modbus.hrl").
-
--define(DEFAULT_DEVICE_NUM, 2).
+-include("../include/gen_slave.hrl").
 
 %% API
 -export([
@@ -31,6 +30,8 @@
     terminate/2,
     code_change/3
     ]).
+
+-define(DEFAULT_DEVICE_NUM, 2).
 
 -define(DEFAULT_SOCK_OPTS, [
     inet,
@@ -83,11 +84,11 @@
     {noreply, Command :: cmd(), NewState :: term(), timeout() | hibernate | {continue, term()}} |
     {stop, Reason :: term(), Command :: cmd(), NewState :: term()}.
 
--callback connect(Socket :: socket:socket(), State :: term()) ->
+-callback connect(Socket :: gen_tcp:socket(), State :: term()) ->
     {ok, Command :: cmd(), NewState :: term()} |
     {stop, Reason :: term(), Command :: cmd(), NewState :: term()}.
 
--callback disconnect(Reason :: econnrefused | normal | socket_closed | shutdown | term(), State :: term()) ->
+-callback disconnect(Socket :: gen_tcp:socket(), Reason :: econnrefused | normal | socket_closed | shutdown | term(), State :: term()) ->
     {ok, Command :: cmd(), NewState :: term()} |
     {stop, Reason :: term(), Command :: cmd(), NewState :: term()}.
 
@@ -260,6 +261,10 @@ handle_cast({connect, Sock}, S) ->
     S2 = connect(connect_it(S), S#state{active_socks = [Sock]}),
     {noreply, S2};
 
+handle_cast({connect, error, Reason}, S) ->
+    Res = disconnect_it(Reason, S),
+    msg_resp(Res, S#state{stage = disconnect, buff = <<>>, active_socks = [undefined]});
+
 handle_cast(Msg, S) ->
     Mod = S#state.mod,
     Res =
@@ -291,60 +296,92 @@ handle_cast(Msg, S) ->
     end.
 
 parser(Chunk, #state{buff = Buff} = S) ->
-    parser_(<<Buff/binary, Chunk/binary>>, S).
+    parser_(<<Buff/binary, Chunk/binary>>, [{ok, [], S#state.state}], S).
 
-parser_(<<Id:16, 0:16, MsgLen:16, Payload:MsgLen/binary, Tail/binary>>, S) ->
-    parser__(Id, Payload, S#state{buff = Tail});
+parser_(<<Id:16, 0:16, MsgLen:16, Payload:MsgLen/binary, Tail/binary>>, Res, S) ->
+    parser__(Id, Payload, Res, S#state{buff = Tail});
 
-parser_(Buff, S) ->
-    {noreply, S#state{buff = Buff}}.
+parser_(Buff, Res, S) ->
+    message_(Res, {ok, [], S}, S#state{buff = Buff}).
 
-parser__(Id, <<DevNum:8, ?FUN_CODE_WRITE_HREG:8, RegNum:16, Value:16, Tail/binary>>, #state{active_socks = [Sock]} = S) ->
+parser__(Id, <<?DEFAULT_DEVICE_NUM:8, ?FUN_CODE_WRITE_HREG:8, RegNum:16, Value:16, Tail/binary>>, Res, #state{active_socks = [Sock]} = S) ->
     Holding = dict:store(RegNum, Value, S#state.holding),
-    gen_tcp:send(Sock, <<Id:16, 0:16, 6:16, DevNum:8, ?FUN_CODE_WRITE_HREG:8, RegNum:16, Value:16>>),
-    parser__(Id, S#state.buff, S#state{buff = Tail, holding = Holding});
+    gen_tcp:send(Sock, <<Id:16, 0:16, 6:16, ?DEFAULT_DEVICE_NUM:8, ?FUN_CODE_WRITE_HREG:8, RegNum:16, Value:16>>),
+    message(Id, {writed, holding, RegNum}, Res, S#state{buff = Tail, holding = Holding});
 
-parser__(Id, <<DevNum:8, ?FUN_CODE_WRITE_HREGS:8, RegNum:16, _RegQuantity:16, Len:8, Values:Len/binary, Tail/binary>>, #state{active_socks = [Sock]} = S) ->
+parser__(Id, <<?DEFAULT_DEVICE_NUM:8, ?FUN_CODE_WRITE_HREGS:8, RegNum:16, _RegQuantity:16, Len:8, Values:Len/binary, Tail/binary>>, Res, #state{active_socks = [Sock]} = S) ->
     Quantity = Len div 2,
     Holding = store_hregs(Values, RegNum, S#state.holding),
-    gen_tcp:send(Sock, <<Id:16, 0:16, 6:16, DevNum:8, ?FUN_CODE_WRITE_HREGS:8, RegNum:16, Quantity:16>>),
-    parser__(Id, S#state.buff, S#state{buff = Tail, holding = Holding});
+    gen_tcp:send(Sock, <<Id:16, 0:16, 6:16, ?DEFAULT_DEVICE_NUM:8, ?FUN_CODE_WRITE_HREGS:8, RegNum:16, Quantity:16>>),
+    message(Id, {writed, holding, RegNum}, Res, S#state{buff = Tail, holding = Holding});
 
-parser__(Id, <<DevNum:8, ?FUN_CODE_WRITE_COIL:8, RegNum:16, 0:16, Tail/binary>>, #state{active_socks = [Sock]} = S) ->
+parser__(Id, <<?DEFAULT_DEVICE_NUM:8, ?FUN_CODE_WRITE_COIL:8, RegNum:16, 0:16, Tail/binary>>, Res, #state{active_socks = [Sock]} = S) ->
     S2 = change_coil(RegNum, off, S),
-    gen_tcp:send(Sock, <<Id:16, 0:16, 6:16, DevNum:8, ?FUN_CODE_WRITE_COIL:8, RegNum:16, 0:16>>),
-    parser__(Id, S#state.buff, S2#state{buff = Tail});
+    gen_tcp:send(Sock, <<Id:16, 0:16, 6:16, ?DEFAULT_DEVICE_NUM:8, ?FUN_CODE_WRITE_COIL:8, RegNum:16, 0:16>>),
+    message(Id, {alarm, on, RegNum}, Res, S2#state{buff = Tail});
 
-parser__(Id, <<DevNum:8, ?FUN_CODE_WRITE_COIL:8, RegNum:16, 16#FF00:16, Tail/binary>>, #state{active_socks = [Sock]} = S) ->
+parser__(Id, <<?DEFAULT_DEVICE_NUM:8, ?FUN_CODE_WRITE_COIL:8, RegNum:16, 16#FF00:16, Tail/binary>>, Res, #state{active_socks = [Sock]} = S) ->
     S2 = change_coil(RegNum, on, S),
-    gen_tcp:send(Sock, <<Id:16, 0:16, 6:16, DevNum:8, ?FUN_CODE_WRITE_COIL:8, RegNum:16, 16#FF00:16>>),
-    parser__(Id, S#state.buff, S2#state{buff = Tail});
+    gen_tcp:send(Sock, <<Id:16, 0:16, 6:16, ?DEFAULT_DEVICE_NUM:8, ?FUN_CODE_WRITE_COIL:8, RegNum:16, 16#FF00:16>>),
+    message(Id, {alarm, on, RegNum}, Res, S2#state{buff = Tail});
 
-parser__(Id, <<DevNum:8, ?FUN_CODE_WRITE_COILS:8, RegNum:16, Quantity:16, 1:8, Values:8, Tail/binary>>, #state{active_socks = [Sock]} = S) ->
+parser__(Id, <<?DEFAULT_DEVICE_NUM:8, ?FUN_CODE_WRITE_COILS:8, RegNum:16, Quantity:16, 1:8, Values:8, Tail/binary>>, Res, #state{active_socks = [Sock]} = S) ->
     <<Coil>> = S#state.coils,
     Coils = Values bor Coil,
-    gen_tcp:send(Sock, <<Id:16, 0:16, 6:16, DevNum:8, ?FUN_CODE_WRITE_COILS:8, RegNum:16, Quantity:16>>),
-    parser__(Id, S#state.buff, S#state{buff = Tail, coils = <<Coils>>});
+    gen_tcp:send(Sock, <<Id:16, 0:16, 6:16, ?DEFAULT_DEVICE_NUM:8, ?FUN_CODE_WRITE_COILS:8, RegNum:16, Quantity:16>>),
+    message(Id, {alarm, on, RegNum}, Res, S#state{buff = Tail, coils = <<Coils>>});
 
-parser__(Id, <<DevNum:8, ?FUN_CODE_READ_HREGS:8, RegNum:16, Quantity:16, Tail/binary>>, #state{active_socks = [Sock]} = S) ->
+parser__(Id, <<?DEFAULT_DEVICE_NUM:8, ?FUN_CODE_READ_HREGS:8, RegNum:16, Quantity:16, Tail/binary>>, Res, #state{active_socks = [Sock]} = S) ->
     Len = Quantity * 2,
     MsgLen = Len + 3,
     BinData = find_hregs(S#state.holding, RegNum, Quantity, <<>>),
-    gen_tcp:send(Sock, <<Id:16, 0:16, MsgLen:16, DevNum:8, ?FUN_CODE_READ_HREGS:8, Len:8, BinData:Len/binary>>),
-    parser__(Id, S#state.buff, S#state{buff = Tail});
+    gen_tcp:send(Sock, <<Id:16, 0:16, MsgLen:16, ?DEFAULT_DEVICE_NUM:8, ?FUN_CODE_READ_HREGS:8, Len:8, BinData:Len/binary>>),
+    message(Id, {readed, holding, RegNum}, Res, S#state{buff = Tail});
 
-parser__(Id, <<DevNum:8, ?FUN_CODE_READ_COILS:8, _RegNum:16, _Quantity:16, Tail/binary>>, #state{active_socks = [Sock]} = S) ->
+parser__(Id, <<?DEFAULT_DEVICE_NUM:8, ?FUN_CODE_READ_COILS:8, RegNum:16, _Quantity:16, Tail/binary>>, Res, #state{active_socks = [Sock]} = S) ->
     <<Values>> = S#state.coils,
-    gen_tcp:send(Sock, <<Id:16, 0:16, 4:16, DevNum:8, ?FUN_CODE_READ_COILS:8, 1:8, Values:8>>),
-    parser__(Id, S#state.buff, S#state{buff = Tail});
+    gen_tcp:send(Sock, <<Id:16, 0:16, 4:16, ?DEFAULT_DEVICE_NUM:8, ?FUN_CODE_READ_COILS:8, 1:8, Values:8>>),
+    message(Id, {readed, coils, RegNum}, Res, S#state{buff = Tail});
 
-parser__(Id, <<DevNum:8, _:4, T:4, _/binary>>, #state{active_socks = [Sock]} = S) ->
-    gen_tcp:send(Sock, <<Id:16, 0:16, 3:16, DevNum:8, 8:4, T:4, 2:8>>),
-    parser_(S#state.buff, S);
+parser__(Id, <<?DEFAULT_DEVICE_NUM:8, _:4, T:4, _/binary>>, Res, #state{active_socks = [Sock]} = S) ->
+    gen_tcp:send(Sock, <<Id:16, 0:16, 3:16, ?DEFAULT_DEVICE_NUM:8, 8:4, T:4, 2:8>>),
+    parser_(S#state.buff, Res, S);
 
-parser__(Id, Buff, #state{buff = Tail} = S) ->
+parser__(_Id, <<_DevNum:8, _/binary>>, Res, S) ->
+    parser_(S#state.buff, Res, S);
+
+parser__(Id, Buff, Res, #state{buff = Tail} = S) ->
     io:format("Id is ~w payload is ~w~n", [Id, Buff]),
-    parser_(<<Buff/binary, Tail/binary>>, S).
+    parser_(<<Buff/binary, Tail/binary>>, Res, S).
+
+message(Id, Info, Res, S) ->
+    Mod = S#state.mod,
+    Res2 =
+    try
+        Mod:message(Info, S#state.state)
+    catch
+        throw:R -> {ok, R};
+        C:R:Stacktrace -> erlang:raise(C, R, Stacktrace)
+    end,
+    parser__(Id, S#state.buff, [Res2 | Res], S).
+
+message_([], Rep, _S) ->
+    Rep;
+message_([H | T], _Rep, S) ->
+    case H of
+        {ok, Command, SS} ->
+            case cmd(Command, S#state{state = SS}) of
+                {stop, Reason, S2} ->
+                    message_(T, {stop, Reason, S2}, S2);
+                S2 ->
+                    message_(T, {noreply, S2}, S2)
+            end;
+        {stop, Reason, Command, SS} ->
+            {stop, Reason2, S2} = cmd(Command, S#state{stage = {stop, Reason}, state = SS}),
+            message_(T, {stop, Reason2, S2}, S2);
+        {'EXIT', Class, Reason, Strace} ->
+            erlang:raise(Class, Reason, Strace)
+    end.
 
 msg_resp(Res, S) ->
     case Res of
@@ -365,10 +402,9 @@ handle_info({tcp, Socket, Data}, S) when [Socket] =:= S#state.active_socks ->
     parser(Data, S);
 
 handle_info({tcp_closed, Socket}, S) when [Socket] =:= S#state.active_socks ->
-    Socks = [undefined],
     gen_tcp:close(Socket),
     Res = disconnect_it(connection_closed, S),
-    msg_resp(Res, S#state{stage = disconnect, buff = <<>>, active_socks = Socks});
+    msg_resp(Res, S#state{stage = disconnect, buff = <<>>, active_socks = [undefined]});
 
 handle_info(Info, S) ->
     Mod = S#state.mod,
@@ -439,17 +475,17 @@ disconnect_it(Reason, S) ->
 code_change(_OldVsn, S, _Extra) ->
     {ok, S}.
 
-cmd([#wait_connect{} | T], #state{stage = init} = S) ->
+cmd([wait_connect | T], #state{stage = init} = S) ->
     spawn(gen_slave, wait_connect, [self(), S#state.listen_sock]),
     cmd(T, S);
-cmd([#wait_connect{} | T], #state{stage = connect} = S) ->
+cmd([wait_connect | T], #state{stage = connect} = S) ->
     cmd(T, S);
-cmd([#wait_connect{} | T], #state{active_socks = undefined, stage = {stop, _Reason}} = S) ->
+cmd([wait_connect | T], #state{active_socks = undefined, stage = {stop, _Reason}} = S) ->
     spawn(gen_slave, wait_connect, [self(), S#state.listen_sock]),
     cmd(T, S);
-cmd([#wait_connect{} | T], #state{stage = {stop, _Reason}} = S) ->
+cmd([wait_connect | T], #state{stage = {stop, _Reason}} = S) ->
     cmd(T, S);
-cmd([#wait_connect{} | T], #state{stage = disconnect} = S) ->
+cmd([wait_connect | T], #state{stage = disconnect} = S) ->
     spawn(gen_slave, wait_connect, [self(), S#state.listen_sock]),
     cmd(T, S);
 
@@ -468,8 +504,9 @@ cmd([#disconnect{reason = Reason} | T], #state{stage = {stop, _Reason}} = S) ->
 cmd([#disconnect{} | T], #state{stage = _} = S) ->
     cmd(T, S);
 
-cmd([#alarm{type = Type, status = Status} | T], S) ->
-    cmd(T, change_coil(Type, Status, S));
+cmd([#alarm{status = Status, type = Type} | T], S) ->
+    S2 = cmd_message({alarm, Status, Type}, S),
+    cmd(T, change_coil(Type, Status, S2));
 
 cmd([], #state{stage = {stop, Reason}} = S) ->
     {stop, Reason, S};
@@ -504,6 +541,30 @@ cmd_disconnect(T, Reason, #state{stage = {stop, Reason}} = S) ->
             erlang:raise(Class, Reason2, Strace)
     end.
 
+cmd_message(Info, S) ->
+    Mod = S#state.mod,
+    Res =
+    try
+        Mod:message(Info, S#state.state)
+    catch
+        throw:R -> {ok, R};
+        C:R:Stacktrace -> erlang:raise(C, R, Stacktrace)
+    end,
+    case Res of
+        {ok, Command, SS} ->
+            case cmd(Command, S#state{state = SS}) of
+                {stop, _Reason, S2} ->
+                    S2;
+                S2 ->
+                    S2
+            end;
+        {stop, Reason, Command, SS} ->
+            {stop, _Reason, S2} = cmd(Command, S#state{stage = {stop, Reason}, state = SS}),
+            S2;
+        {'EXIT', Class, Reason, Strace} ->
+            erlang:raise(Class, Reason, Strace)
+    end.
+
 change_coil(RegNum, on, S) ->
     change_coil_(RegNum, 1, S);
 change_coil(RegNum, off, S) ->
@@ -522,7 +583,7 @@ find_hregs(Dict, RegNum, Quantity, Acc) ->
         {ok, Val} ->
             find_hregs(Dict, RegNum + 1, Quantity - 1, <<Acc/binary, Val:16>>);
         error ->
-            error
+            0
     end.
 
 store_hregs(<<>>, _RegNum, Dict) ->

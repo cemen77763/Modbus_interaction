@@ -6,6 +6,10 @@
 
 -behaviour(gen_server).
 
+-include("../include/gen_modbus.hrl").
+
+-include("../include/gen_master.hrl").
+
 %% API
 -export([
     start_link/3,
@@ -27,8 +31,6 @@
     terminate/2,
     code_change/3
     ]).
-
--include("../include/gen_modbus.hrl").
 
 -define(DEFAULT_SOCK_OPTS, [
     inet,

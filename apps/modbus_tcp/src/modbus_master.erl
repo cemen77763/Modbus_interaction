@@ -6,7 +6,7 @@
 
 -behaviour(gen_master).
 
--include_lib("../../gen_modbus/include/gen_modbus.hrl").
+-include_lib("../../gen_modbus/include/gen_master.hrl").
 
 -export([
     start/0,
