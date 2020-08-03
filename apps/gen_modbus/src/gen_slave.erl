@@ -39,13 +39,13 @@
     binary,
     {active, true},
     {packet, raw},
-    {reuseaddr, true},
+    {reuseaddr, false},
     {nodelay, true}
     ]).
 
 -record(s, {
     state :: term(),
-    stage :: atom(),
+    stage :: init | disconnect | connect | {stop, term()},
     mod :: atom(),
     device :: integer(),
     listen_sock :: gen_tcp:socket(),
@@ -201,11 +201,11 @@ handle_call(Request, From, S) ->
 
 handle_call_it({reply, Reply, Command, SS}, S) ->
     case cmd(Command, S#s{state = SS}) of
-                {stop, Reason, S2} ->
-                    {stop, Reason, S2};
-                S2 ->
-                    {reply, Reply, S2}
-            end;
+        {stop, Reason, S2} ->
+            {stop, Reason, S2};
+        S2 ->
+            {reply, Reply, S2}
+    end;
 handle_call_it({reply, Reply, Command, SS, Timeout}, S) ->
     case cmd(Command, S#s{state = SS}) of
         {stop, Reason, S2} ->
@@ -323,7 +323,7 @@ parser__(Id, <<DevNum:8, ?FUN_CODE_READ_INPUTS:8, _/binary>>, Res, Sock, #s{devi
     parser_(maps:get(Sock, S#s.buff), Res, Sock, S);
 
 parser__(Id, <<DevNum:8, FunCode:8,  _/binary>>, Res, Sock, #s{device = DevNum} = S) ->
-    <<ErrCode:1, Other:7>> = FunCode,
+    <<ErrCode:1, Other:7>> = <<FunCode>>,
     gen_tcp:send(Sock, <<Id:16, 0:16, 3:16, DevNum:8, ErrCode:1, Other:7, 1:8>>),
     parser_(maps:get(Sock, S#s.buff), Res, Sock, S);
 
@@ -376,18 +376,18 @@ check_connections(#s{active_socks = []} = S) ->
 check_connections(S) ->
     S.
 
-handle_info({tcp, Socket, Data}, S)->
-    lists:member(Socket, S#s.active_socks) andalso
-        parser(Data, Socket, S);
+handle_info({tcp, Sock, Data}, S)->
+    lists:member(Sock, S#s.active_socks) andalso
+        parser(Data, Sock, S);
 
-handle_info({tcp_closed, Socket}, #s{active_socks = ASocks, buff = Buff} = S) ->
-    case lists:member(Socket, ASocks) of
+handle_info({tcp_closed, Sock}, #s{active_socks = ASocks, buff = Buff} = S) ->
+    case lists:member(Sock, ASocks) of
         true ->
-            gen_tcp:close(Socket),
-            Socks = lists:delete(Socket, ASocks),
-            Res = disconnect_it(Socket, connection_closed, S),
+            gen_tcp:close(Sock),
+            Socks = lists:delete(Sock, ASocks),
+            Res = disconnect_it(Sock, connection_closed, S),
             S2 = check_connections(S),
-            resp_it(Res, S2#s{buff = maps:remove(Socket, Buff), active_socks = Socks});
+            resp_it(Res, S2#s{buff = maps:remove(Sock, Buff), active_socks = Socks});
         _ ->
             {noreply, S}
     end;
@@ -430,10 +430,10 @@ terminate_it(Mod, Reason, S) ->
             ok
     end.
 
-disconnect_it(Socket, Reason, S) ->
+disconnect_it(Sock, Reason, S) ->
     Mod = S#s.mod,
     try
-        Mod:disconnect(Socket, Reason, S#s.state)
+        Mod:disconnect(Sock, Reason, S#s.state)
     catch
         throw:R -> {ok, R};
         C:R:Stacktrace -> {'EXIT', C, R, Stacktrace}
@@ -443,18 +443,18 @@ cmd([wait_connect | T], #s{stage = _} = S) ->
     spawn(gen_slave, wait_connect, [self(), S#s.listen_sock]),
     cmd(T, S);
 
-cmd([#disconnect{socket = Socket, reason = Reason} | T], #s{stage = connect, active_socks = ASocks, buff = Buff} = S) ->
-    gen_tcp:close(Socket),
-    Socks = lists:delete(Socket, ASocks),
+cmd([#disconnect{socket = Sock, reason = Reason} | T], #s{stage = connect, active_socks = ASocks, buff = Buff} = S) ->
+    gen_tcp:close(Sock),
+    Socks = lists:delete(Sock, ASocks),
     S2 = check_connections(S),
-    cmd_disconnect(T, Socket, Reason, S2#s{buff = maps:remove(Socket, Buff), active_socks = Socks});
+    cmd_disconnect(T, Sock, Reason, S2#s{buff = maps:remove(Sock, Buff), active_socks = Socks});
 cmd([#disconnect{} | T], #s{active_socks = [], stage = {stop, _Reason}} = S) ->
     cmd(T, S);
-cmd([#disconnect{socket = Socket, reason = Reason} | T], #s{stage = {stop, _Reason}, active_socks = ASocks, buff = Buff} = S) ->
-    gen_tcp:close(Socket),
-    Socks = lists:delete(Socket, ASocks),
+cmd([#disconnect{socket = Sock, reason = Reason} | T], #s{stage = {stop, _Reason}, active_socks = ASocks, buff = Buff} = S) ->
+    gen_tcp:close(Sock),
+    Socks = lists:delete(Sock, ASocks),
     S2 = check_connections(S),
-    cmd_disconnect(T, Socket, Reason, S2#s{buff = maps:remove(Socket, Buff), active_socks = Socks});
+    cmd_disconnect(T, Sock, Reason, S2#s{buff = maps:remove(Sock, Buff), active_socks = Socks});
 cmd([#disconnect{} | T], #s{stage = _} = S) ->
     cmd(T, S);
 
@@ -479,8 +479,8 @@ wait_connect(From, LSock) ->
             gen_server:cast(From, {connect_error, Reason, undefined})
     end.
 
-cmd_disconnect(T, Socket, Reason, #s{stage = {stop, Reason}} = S) ->
-    case disconnect_it(Socket, Reason, S) of
+cmd_disconnect(T, Sock, Reason, #s{stage = {stop, Reason}} = S) ->
+    case disconnect_it(Sock, Reason, S) of
         {ok, Command, SS} ->
             cmd(Command ++ T, S#s{state = SS, stage = disconnect});
         {stop, _Reason, Command, SS} ->
@@ -488,8 +488,8 @@ cmd_disconnect(T, Socket, Reason, #s{stage = {stop, Reason}} = S) ->
         {'EXIT', Class, Reason2, Strace} ->
             erlang:raise(Class, Reason2, Strace)
     end;
-cmd_disconnect(T, Socket, Reason, #s{stage = {stop, Reason}} = S) ->
-    case disconnect_it(Socket, Reason, S) of
+cmd_disconnect(T, Sock, Reason, #s{stage = {stop, Reason}} = S) ->
+    case disconnect_it(Sock, Reason, S) of
         {ok, Command, SS} ->
             cmd(Command ++ T, S#s{state = SS, stage = {stop, Reason}});
         {stop, _Reason, Command, SS} ->

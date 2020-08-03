@@ -567,6 +567,9 @@ parser_(<<Id:16, 0:16, MsgLen:16, Payload:MsgLen/binary, Tail/binary>>, {stop, R
 parser_(<<_Id:16, 0:16, MsgLen:16, _Payload:MsgLen/binary, _Tail/binary>>, {'EXIT', Class, Reason, Strace}, _S) ->
     erlang:raise(Class, Reason, Strace);
 
+parser_(<<_Id:16, _Other:16, _/binary>>, _Res, S) ->
+    {noreply, S#s{recv_buff = <<>>}};
+
 parser_(Buffer, Res, S) ->
     resp_it(Res, S#s{recv_buff = Buffer}).
 
@@ -625,7 +628,10 @@ parser__(Id, <<DevNum:8, ?ERR_CODE_WRITE_COIL:8, Err_code:8>>, S) ->
     message(Msg, S);
 parser__(Id, <<DevNum:8, ?ERR_CODE_WRITE_COILS:8, Err_code:8>>, S) ->
     Msg = #write_coils_status{transaction_id = Id, device_number = DevNum, error_code = Err_code},
-    message(Msg, S).
+    message(Msg, S);
+
+parser__(_Id, <<_/binary>>, S) ->
+    parser_(<<>>, {ok, [], S#s.state}, S).
 
 message(RegFun, S) ->
     Mod = S#s.mod,

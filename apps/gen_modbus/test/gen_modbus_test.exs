@@ -13,7 +13,7 @@ defmodule GenModbusTest do
         sock_opts: :undefined,
         recv_buff: <<>>,
         send_buff: <<>>,
-        stage: :connect
+        stage: :disconnect
         )
 
     test "test handle" do
@@ -124,4 +124,5 @@ defmodule GenModbusTest do
         assert :gen_master.handle_info({:tcp, :undefined, <<40::16>>}, s(recv_buff: <<1::16, 0::16, 6::16, 1::8, 6::8, 1::16>>)) ==
         {:noreply, s(recv_buff: <<>>)}
     end
+
 end

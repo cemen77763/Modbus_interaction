@@ -46,11 +46,6 @@ connect(#sock_info{ip_addr = Ip_addr, port = Port}, S) ->
         register_number = 1,
         register_value = 12
         },
-    _WriteCoil = #write_coil_status{
-        transaction_id = 1,
-        device_number = 2,
-        register_number = 1,
-        register_value = 1},
     io:format("Connection fine Ip addr: ~w Port ~w~n", [Ip_addr, Port]),
     {ok, [WriteHreg], S}.
 
@@ -64,12 +59,6 @@ message(#read_register{type = holding, device_number = Dev_num, register_number 
     ReadIreg = #read_register{
         transaction_id = 1,
         type = input,
-        device_number = 2,
-        register_number = 1,
-        quantity = 5},
-    _ReadCoils = #read_status{
-        transaction_id = 1,
-        type = coil,
         device_number = 2,
         register_number = 1,
         quantity = 5},

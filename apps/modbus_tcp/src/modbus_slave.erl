@@ -20,6 +20,7 @@
     ]).
 
 -record(s, {
+    s = state,
     allowed_connections :: integer(),
     active_socks = []
     }).

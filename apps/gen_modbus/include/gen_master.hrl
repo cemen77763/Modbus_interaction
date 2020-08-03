@@ -82,7 +82,7 @@
     device_number :: integer() | undefined,
     register_number :: integer() | undefined,
     quantity :: integer() | undefined,
-    registers_value :: binary() | undefined,
+    registers_value :: integer() | undefined,
     error_code :: integer() | undefined
     }).
 %%% ------------------------- GEN MASTER COMMANDS RECORDS -------------------------
