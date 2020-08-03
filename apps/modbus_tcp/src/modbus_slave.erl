@@ -21,7 +21,7 @@
 
 -record(s, {
     allowed_connections :: integer(),
-    active_socks = [gen_tcp:socket()]
+    active_socks = []
     }).
 
 -define(SERVER, gen_slave).
