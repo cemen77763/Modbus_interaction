@@ -387,18 +387,18 @@ cmd([#write_coils_status{} | T], #s{stage = _} = S) ->
     cmd(T, S);
 
 cmd([], #s{stage = {stop, Reason}} = S) ->
-    case S#s.send_buff of
+    case Buff = count_mbap(S#s.send_buff) of
         <<>> ->
             {stop, Reason, S};
         <<_Packet/binary>> ->
-            send_message(S)
+            send_message(S#s{send_buff = Buff})
     end;
 cmd([], S) ->
-    case S#s.send_buff of
+    case Buff = count_mbap(S#s.send_buff) of
         <<>> ->
             S;
         <<_Packet/binary>> ->
-            send_message(S)
+            send_message(S#s{send_buff = Buff})
     end.
 
 disconnect_it(Reason, S) ->
@@ -524,6 +524,18 @@ write_cregs(T, {Id, DevNum, RegNum, Quantity, Values}, #s{send_buff = Buff} = S)
     Packet = <<Id:16, 0:16, 8:16, DevNum:8, ?FUN_CODE_WRITE_COILS:8, RegNum:16, Quantity:16, 1:8, Values:8>>,
     cmd(T, S#s{send_buff = <<Buff/binary, Packet/binary>>}).
 
+count_mbap(<<>>) ->
+    <<>>;
+
+count_mbap(<<Id:16, 0:16, Len:16, Buff/binary>>) ->
+    {MsgLen, Pdu} = count_mbap_(<<Len:16, Buff/binary>>),
+    <<Id:16, 0:16, MsgLen:16, Pdu:MsgLen/binary>>.
+
+count_mbap_(<<MsgLen:16, Pdu:MsgLen/binary, _Id:16, 0:16, Len:16, Tail/binary>>) ->
+    MsgLen2 = MsgLen + Len,
+    count_mbap_(<<MsgLen2:16, Pdu/binary, Tail/binary>>);
+count_mbap_(<<MsgLen:16, Pdu:MsgLen/binary>>) -> {MsgLen, Pdu}.
+
 send_message(S) ->
     Socket = S#s.sock_info#sock_info.socket,
     Packet = S#s.send_buff,
@@ -540,21 +552,20 @@ change_sopts(Opts, S) ->
 parser(Chunk, #s{recv_buff = Buffer} = S) ->
     parser_(<<Buffer/binary, Chunk/binary>>, {ok, [], S#s.state}, S).
 
-parser_(<<Id:16, 0:16, MsgLen:16, Payload:MsgLen/binary, Tail/binary>>, Res, S) ->
-    case Res of
-        {ok, Command, S2} ->
-            case cmd(Command, S#s{state = S2, recv_buff = Tail}) of
-                {stop, _Reason, S3} ->
-                    parser__(Id, Payload, S3);
-                S3 ->
-                    parser__(Id, Payload, S3)
-            end;
-        {stop, Reason, Command, S2} ->
-            {stop, _, S3} = cmd(Command, S#s{recv_buff = Tail, stage = {stop, Reason}, state = S2}),
+parser_(<<Id:16, 0:16, MsgLen:16, Payload:MsgLen/binary, Tail/binary>>, {ok, Command, S2}, S) ->
+    case cmd(Command, S#s{state = S2, recv_buff = Tail}) of
+        {stop, _Reason, S3} ->
             parser__(Id, Payload, S3);
-        {'EXIT', Class, Reason, Strace} ->
-            erlang:raise(Class, Reason, Strace)
+        S3 ->
+            parser__(Id, Payload, S3)
     end;
+
+parser_(<<Id:16, 0:16, MsgLen:16, Payload:MsgLen/binary, Tail/binary>>, {stop, Reason, Command, S2}, S) ->
+    {stop, _, S3} = cmd(Command, S#s{recv_buff = Tail, stage = {stop, Reason}, state = S2}),
+    parser__(Id, Payload, S3);
+
+parser_(<<_Id:16, 0:16, MsgLen:16, _Payload:MsgLen/binary, _Tail/binary>>, {'EXIT', Class, Reason, Strace}, _S) ->
+    erlang:raise(Class, Reason, Strace);
 
 parser_(Buffer, Res, S) ->
     resp_it(Res, S#s{recv_buff = Buffer}).

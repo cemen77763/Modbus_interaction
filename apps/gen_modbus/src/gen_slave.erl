@@ -274,10 +274,8 @@ parser(Chunk, Sock, #s{buff = Buff} = S) ->
 
 parser_(<<Id:16, 0:16, MsgLen:16, Payload:MsgLen/binary, Tail/binary>>, Res, Sock, #s{buff = Buff} = S) ->
     parser__(Id, Payload, Res, Sock, S#s{buff = maps:update(Sock, Tail, Buff)});
-
 parser_(<<_:16, _Other:16, _/binary>>, Res, Sock, S) ->
     parser_(<<>>, Res, Sock, S);
-
 parser_(Data, Res, Sock, #s{buff = Buff} = S) ->
     message_(Res, {ok, [], S}, S#s{buff = maps:update(Sock, Data, Buff)}).
 
