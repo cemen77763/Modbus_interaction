@@ -9,6 +9,10 @@
 -include("../include/gen_modbus.hrl").
 -include("../include/gen_slave.hrl").
 
+-define(DEFAULT_PORT, 502).
+
+-define(DEFAULT_DEVICE_NUM ,2).
+
 %% API
 -export([
     start_link/3,
@@ -27,8 +31,7 @@
     handle_cast/2,
     handle_info/2,
     handle_continue/2,
-    terminate/2,
-    code_change/3
+    terminate/2
     ]).
 
 -define(DEFAULT_SOCK_OPTS, [
@@ -82,7 +85,7 @@
     {noreply, Command :: cmd(), NewState :: term(), timeout() | hibernate | {continue, term()}} |
     {stop, Reason :: term(), Command :: cmd(), NewState :: term()}.
 
--callback connect(Socket :: gen_tcp:socket(), State :: term()) ->
+-callback connect(Socket :: gen_tcp:socket() | undefined, State :: term()) ->
     {ok, Command :: cmd(), NewState :: term()} |
     {stop, Reason :: term(), Command :: cmd(), NewState :: term()}.
 
@@ -98,9 +101,7 @@
     term().
 
 -optional_callbacks([
-    terminate/2,
-    handle_info/2,
-    handle_continue/2
+    terminate/2
     ]).
 
 start_link(Mod, Args, Options) ->
@@ -239,22 +240,22 @@ connect({ok, Command, SS}, S) -> cmd(Command, S#s{state = SS, stage = connect});
 connect({stop, Reason, Command, SS}, #s{stage = {stop, _Reason}} = S) -> cmd(Command, S#s{state = SS, stage = {stop, Reason}});
 connect({stop, Reason, Command, SS}, S) -> cmd(Command, S#s{state = SS, stage = {stop, Reason}}).
 
-connect_it(S) ->
+connect_it(S, Sock) ->
     Mod = S#s.mod,
     try
-        Mod:connect(S#s.listen_sock, S#s.state)
+        Mod:connect(Sock, S#s.state)
     catch
         throw:R -> {ok, R};
         C:R:Stacktrace -> {'EXIT', C, R, Stacktrace}
     end.
 
-handle_cast({connect, Socket}, #s{active_socks = Socks, buff = Buff} = S) ->
-    S2 = connect(connect_it(S), S#s{active_socks = [Socket | Socks], buff = maps:put(Socket, <<>>, Buff)}),
+handle_cast({connect, Sock}, #s{active_socks = Socks, buff = Buff} = S) ->
+    S2 = connect(connect_it(S, Sock), S#s{active_socks = [Sock | Socks], buff = maps:put(Sock, <<>>, Buff)}),
     {noreply, S2};
 
-handle_cast({connect_error, Reason, Socket}, #s{buff = Buff} = S) ->
-    Res = disconnect_it(Socket, Reason, S),
-    resp_it(Res, S#s{stage = disconnect, buff = maps:remove(Socket, Buff)});
+handle_cast({connect_error, Reason}, S) ->
+    Res = disconnect_it(undefined, Reason, S),
+    resp_it(Res, check_connections(S));
 
 handle_cast(Msg, S) ->
     Mod = S#s.mod,
@@ -281,13 +282,13 @@ parser_(Data, Res, Sock, #s{buff = Buff} = S) ->
     message_(Res, {ok, [], S}, S#s{buff = maps:update(Sock, Data, Buff)}).
 
 parser__(Id, <<DevNum:8, ?FUN_CODE_WRITE_COIL:8, RegNum:16, 0:16, Tail/binary>>, Res, Sock, #s{device = DevNum, buff = Buff} = S) ->
-    S2 = change_coil(RegNum, off, S),
+    S2 = change_coil(RegNum + 1, off, S),
     gen_tcp:send(Sock, <<Id:16, 0:16, 6:16, DevNum:8, ?FUN_CODE_WRITE_COIL:8, RegNum:16, 0:16>>),
     message(Id, {alarm, off, RegNum}, Res, Sock, S2#s{buff = maps:update(Sock, Tail, Buff)});
 parser__(Id, <<DevNum:8, ?FUN_CODE_WRITE_COIL:8, RegNum:16, 16#FF00:16, Tail/binary>>, Res, Sock, #s{device = DevNum, buff = Buff} = S) ->
-    S2 = change_coil(RegNum, on, S),
+    S2 = change_coil(RegNum + 1, on, S),
     gen_tcp:send(Sock, <<Id:16, 0:16, 6:16, DevNum:8, ?FUN_CODE_WRITE_COIL:8, RegNum:16, 16#FF00:16>>),
-    message(Id, {alarm, off, RegNum}, Res, Sock, S2#s{buff = maps:update(Sock, Tail, Buff)});
+    message(Id, {alarm, on, RegNum}, Res, Sock, S2#s{buff = maps:update(Sock, Tail, Buff)});
 parser__(Id, <<DevNum:8, ?FUN_CODE_WRITE_COILS:8, RegNum:16, Quantity:16, 1:8, Values:8, Tail/binary>>, Res, Sock, #s{device = DevNum, buff = Buff} = S) ->
     <<Coil>> = S#s.coils,
     Coils = Values bor Coil,
@@ -323,7 +324,7 @@ parser__(Id, <<DevNum:8, ?FUN_CODE_READ_INPUTS:8, _/binary>>, Res, Sock, #s{devi
     gen_tcp:send(Sock, <<Id:16, 0:16, 3:16, DevNum:8, ?ERR_CODE_READ_INPUTS:8, 2:8>>),
     parser_(maps:get(Sock, S#s.buff), Res, Sock, S);
 
-parser__(Id, <<_DevNum:8, FunCode:8,  _/binary>>, Res, Sock, #s{device = DevNum} = S) ->
+parser__(Id, <<DevNum:8, FunCode:8,  _/binary>>, Res, Sock, #s{device = DevNum} = S) ->
     <<ErrCode:1, Other:7>> = FunCode,
     gen_tcp:send(Sock, <<Id:16, 0:16, 3:16, DevNum:8, ErrCode:1, Other:7, 1:8>>),
     parser_(maps:get(Sock, S#s.buff), Res, Sock, S);
@@ -439,9 +440,6 @@ disconnect_it(Socket, Reason, S) ->
         throw:R -> {ok, R};
         C:R:Stacktrace -> {'EXIT', C, R, Stacktrace}
     end.
-
-code_change(_OldVsn, S, _Extra) ->
-    {ok, S}.
 
 cmd([wait_connect | T], #s{stage = _} = S) ->
     spawn(gen_slave, wait_connect, [self(), S#s.listen_sock]),

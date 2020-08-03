@@ -56,7 +56,7 @@ defmodule ModbusTcpTest do
     Record.defrecord(:write_coil_status,
         transaction_id: 1,
         device_number: 2,
-        register_number: 1,
+        register_number: 3,
         registers_value: 0,
         error_code: :undefined)
 
@@ -85,7 +85,6 @@ defmodule ModbusTcpTest do
     test "test connect" do
         assert :modbus_master.connect(sock_info(), :state) ==
         {:ok, [write_holding_register()], :state}
-        assert :modbus_master.connect(["localhost", 502], :state) == {:ok, [], :state}
     end
 
     test "test disconnect" do
@@ -93,7 +92,6 @@ defmodule ModbusTcpTest do
     end
 
     test "start/stop application" do
-        assert :application.start(:modbus_tcp) == :ok
         assert :application.stop(:modbus_tcp) == :ok
     end
 

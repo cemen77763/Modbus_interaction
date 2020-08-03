@@ -27,8 +27,7 @@
     handle_cast/2,
     handle_info/2,
     handle_continue/2,
-    terminate/2,
-    code_change/3
+    terminate/2
     ]).
 
 -define(DEFAULT_SOCK_OPTS, [
@@ -99,9 +98,7 @@
     term().
 
 -optional_callbacks([
-    terminate/2,
-    handle_info/2,
-    handle_continue/2
+    terminate/2
     ]).
 
 start_link(Mod, Args, Options) ->
@@ -303,9 +300,6 @@ terminate_it(Mod, Reason, S) ->
         _ ->
             ok
     end.
-
-code_change(_OldVsn, S, _Extra) ->
-    {ok, S}.
 
 cmd([#connect{} | T], #s{stage = connect} = S) ->
     cmd(T, S);
