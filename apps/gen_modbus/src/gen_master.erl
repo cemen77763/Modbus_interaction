@@ -1,7 +1,7 @@
-%%% -----------------------------------------------------------------------------------------
+%%% ---------------------------------------------------------------------------
 %%% @doc Behaviour to interact with modbus TCP devices
-%%% @end
-%%% -----------------------------------------------------------------------------------------
+%%% @enddoc
+%%% ---------------------------------------------------------------------------
 -module(gen_master).
 
 -behaviour(gen_server).
@@ -27,7 +27,8 @@
     handle_cast/2,
     handle_info/2,
     handle_continue/2,
-    terminate/2
+    terminate/2,
+    code_change/3
     ]).
 
 -define(DEFAULT_SOCK_OPTS, [
@@ -46,14 +47,14 @@
     sock_opts = ?DEFAULT_SOCK_OPTS,
     recv_buff = <<>>,
     send_buff = <<>>,
-    stage = init
+    stage :: init | disconnect | connect | {stop, Reason :: term()}
     }).
 
 -type netinfo() :: [gen_tcp:connect_option()].
 
-%%% -----------------------------------------------------------------------------------------
+%%% ---------------------------------------------------------------------------
 %%% API
-%%% -----------------------------------------------------------------------------------------
+%%% ---------------------------------------------------------------------------
 
 -callback init(Args :: term()) ->
     {ok, Command :: cmd(), State :: term()} | {ok, Command :: cmd(), State :: term(), timeout() | hibernate | {continue, term()}} |
@@ -97,31 +98,42 @@
 -callback terminate(Reason :: (normal | shutdown | {shutdown, term()} | term()), State :: term()) ->
     term().
 
--optional_callbacks([
-    terminate/2
-    ]).
+-optional_callbacks([terminate/2]).
 
+-spec start_link(module:atom(), [arguments:term()], [gen_server:options()]) ->
+    {ok, pid:pid()} | ignore | {error, error:term()}.
 start_link(Mod, Args, Options) ->
     gen_server:start_link(?MODULE, [Mod, Args], Options).
 
+-spec start_link(name:atom(), module:atom(), [arguments:term()], [gen_server:options()]) ->
+    {ok, pid:pid()} | ignore | {error, error:term()}.
 start_link(Name, Mod, Args, Options) ->
     gen_server:start_link(Name, ?MODULE, [Mod, Args], Options).
 
+-spec cast(name:atom(), message:term()) -> ok.
 cast(Name, Message) ->
     gen_server:cast(Name, Message).
 
+-spec call(name:atom(), message:term()) -> reply:term().
 call(Name, Message) ->
     gen_server:call(Name, Message).
 
+-spec call(name:atom(), message:term(), timeout:timer()) -> reply:term().
 call(Name, Message, Timeout) ->
     gen_server:call(Name, Message, Timeout).
 
+-spec stop(name:atom()) -> ok.
 stop(Name) ->
     gen_server:stop(Name).
 
+-spec stop(name:atom(), reason:term(), timeout:timer()) -> ok.
 stop(Name, Reason, Timeout) ->
     gen_server:stop(Name, Reason, Timeout).
 
+%% ----------------------------------------------------------------------------
+%% @doc init callback invokes when gen_master started.
+%% @enddoc
+%% ----------------------------------------------------------------------------
 init([Mod, Args]) ->
     Res =
     try
@@ -153,6 +165,10 @@ init_it(ignore, _Mod) ->
 init_it({'EXIT', Class, Reason, Strace}, _Mod) ->
     erlang:raise(Class, Reason, Strace).
 
+%% ----------------------------------------------------------------------------
+%% @doc handle_continue callback.
+%% @enddoc
+%% ----------------------------------------------------------------------------
 handle_continue(Info, S) ->
     Mod = S#s.mod,
     Res =
@@ -183,6 +199,11 @@ handle_it({stop, Reason, Command, SS}, S) ->
 handle_it({'EXIT', Class, Reason, Strace}, _S) ->
     erlang:raise(Class, Reason, Strace).
 
+%% ----------------------------------------------------------------------------
+%% @doc handle_call callback invokes when somebody call gen_master
+%% working synchronous.
+%% @enddoc
+%% ----------------------------------------------------------------------------
 handle_call(Request, From, S) ->
     Mod = S#s.mod,
     Res =
@@ -230,6 +251,11 @@ handle_call_it({stop, Reason, Command, SS}, S) ->
 handle_call_it({'EXIT', Class, Reason, Strace}, _S) ->
     erlang:raise(Class, Reason, Strace).
 
+%% ----------------------------------------------------------------------------
+%% @doc handle_cast callback insvokes when somebody cast gen_master.
+%% working asynchronous.
+%% @enddoc
+%% ----------------------------------------------------------------------------
 handle_cast(Msg, S) ->
     Mod = S#s.mod,
     Res =
@@ -253,14 +279,26 @@ resp_it({stop, Reason, Command, SS}, S) ->
 resp_it({'EXIT', Class, Reason, Strace}, _S) ->
     erlang:raise(Class, Reason, Strace).
 
+%% ----------------------------------------------------------------------------
+%% @doc if connection closed.
+%% @enddoc
+%% ----------------------------------------------------------------------------
 handle_info({tcp_closed, Socket}, S) when Socket =:= S#s.sock_info#sock_info.socket ->
     gen_tcp:close(Socket),
     Res = disconnect_it(connection_closed, S),
     resp_it(Res, S#s{stage = disconnect, send_buff = <<>>, recv_buff = <<>>, sock_info = #sock_info{socket = undefined}});
 
+%% ----------------------------------------------------------------------------
+%% @doc receive data from connected slave device.
+%% @enddoc
+%% ----------------------------------------------------------------------------
 handle_info({tcp, Socket, Data}, S) when Socket =:= S#s.sock_info#sock_info.socket ->
     parser(Data, S);
 
+%% ----------------------------------------------------------------------------
+%% @doc handle_info callback invokes when gen_master receive message.
+%% @enddoc
+%% ----------------------------------------------------------------------------
 handle_info(Info, S) ->
     Mod = S#s.mod,
     Res =
@@ -272,6 +310,10 @@ handle_info(Info, S) ->
     end,
     handle_it(Res, S).
 
+%% ----------------------------------------------------------------------------
+%% @doc terminate callback invokes when gen_master was stopped.
+%% @enddoc
+%% ----------------------------------------------------------------------------
 terminate(Reason, S) ->
     Mod = S#s.mod,
     Socket = S#s.sock_info#sock_info.socket,
@@ -301,6 +343,22 @@ terminate_it(Mod, Reason, S) ->
             ok
     end.
 
+%% ----------------------------------------------------------------------------
+%% @doc gen server code change callback.
+%% @enddoc
+%% ----------------------------------------------------------------------------
+code_change(_OldVsn, State, _Extra) ->
+    {ok, State}.
+
+%% ----------------------------------------------------------------------------
+%% @doc commands for interaction with gen_master module from callbacks return
+%% connect (ip_addr, port) => connect with slave device
+%% change_sock_opts (reuseaddr, nodelay, ifaddr) => change options of a socket
+%% disconnect (reason) => disconnect from slave device
+%% read input, holding registers and coil, input status;
+%% write input, holding registers and coil, input status.
+%% @enddoc
+%% ----------------------------------------------------------------------------
 cmd([#connect{} | T], #s{stage = connect} = S) ->
     cmd(T, S);
 cmd([#connect{ip_addr = Ip_addr, port = Port} | T], #s{sock_info = #sock_info{socket = undefined}, stage = {stop, _Reason}} = S) ->
@@ -334,6 +392,8 @@ cmd([#disconnect{reason = Reason} | T], #s{stage = {stop, Reason}} = S) ->
 cmd([#disconnect{} | T], #s{stage = _} = S) ->
     cmd(T, S);
 
+cmd([#read_register{} | T], #s{sock_info = #sock_info{socket = undefined}, stage = {stop, _Reason}} = S) ->
+    cmd(T, S);
 cmd([#read_register{transaction_id = Id, type = holding, device_number = DevNum, register_number = RegNum, quantity = Quantity} | T], #s{stage = {stop, _Reason}} = S) ->
     read_hregs(T, {Id, DevNum, RegNum, Quantity}, S);
 cmd([#read_register{transaction_id = Id, type = holding, device_number = DevNum, register_number = RegNum, quantity = Quantity} | T], #s{stage = connect} = S) ->
@@ -346,6 +406,8 @@ cmd([#read_register{transaction_id = Id, type = input, device_number = DevNum, r
 cmd([#read_register{} | T], #s{stage = init} = S) ->
     cmd(T, S);
 
+cmd([#read_status{} | T], #s{sock_info = #sock_info{socket = undefined}, stage = {stop, _Reason}} = S) ->
+    cmd(T, S);
 cmd([#read_status{transaction_id = Id, type = coil, device_number = DevNum, register_number = RegNum, quantity = Quantity} | T], #s{stage = {stop, _Reason}} = S) ->
     read_coils(T, {Id, DevNum, RegNum, Quantity}, S);
 cmd([#read_status{transaction_id = Id, type = coil, device_number = DevNum, register_number = RegNum, quantity = Quantity} | T], #s{stage = connect} = S) ->
@@ -358,6 +420,8 @@ cmd([#read_status{transaction_id = Id, type = input, device_number = DevNum, reg
 cmd([#read_status{} | T], #s{stage = _} = S) ->
     cmd(T, S);
 
+cmd([#write_holding_register{} | T], #s{sock_info = #sock_info{socket = undefined}, stage = {stop, _Reason}} = S) ->
+    cmd(T, S);
 cmd([#write_holding_register{transaction_id = Id, device_number = DevNum, register_number = RegNum, register_value = Value} | T], #s{stage = {stop, _Reason}} = S) ->
     write_hreg(T, {Id, DevNum, RegNum, Value}, S);
 cmd([#write_holding_register{transaction_id = Id, device_number = DevNum, register_number = RegNum, register_value = Value} | T], #s{stage = connect} = S) ->
@@ -365,6 +429,8 @@ cmd([#write_holding_register{transaction_id = Id, device_number = DevNum, regist
 cmd([#write_holding_register{} | T], #s{stage = _} = S) ->
     cmd(T, S);
 
+cmd([#write_holding_registers{} | T], #s{sock_info = #sock_info{socket = undefined}, stage = {stop, _Reason}} = S) ->
+    cmd(T, S);
 cmd([#write_holding_registers{transaction_id = Id, device_number = DevNum, register_number = RegNum, registers_value = Values} | T], #s{stage = {stop, _Reason}} = S) ->
     write_hregs(T, {Id, DevNum, RegNum, Values}, S);
 cmd([#write_holding_registers{transaction_id = Id, device_number = DevNum, register_number = RegNum, registers_value = Values} | T], #s{stage = connect} = S) ->
@@ -372,6 +438,8 @@ cmd([#write_holding_registers{transaction_id = Id, device_number = DevNum, regis
 cmd([#write_holding_registers{} | T], #s{stage = _} = S) ->
     cmd(T, S);
 
+cmd([#write_coil_status{} | T], #s{sock_info = #sock_info{socket = undefined}, stage = {stop, _Reason}} = S) ->
+    cmd(T, S);
 cmd([#write_coil_status{transaction_id = Id, device_number = DevNum, register_number = RegNum, register_value = Value} | T], #s{stage = {stop, _Reason}} = S) ->
     write_creg(T, {Id, DevNum, RegNum, Value}, S);
 cmd([#write_coil_status{transaction_id = Id, device_number = DevNum, register_number = RegNum, register_value = Value} | T], #s{stage = connect} = S) ->
@@ -379,6 +447,8 @@ cmd([#write_coil_status{transaction_id = Id, device_number = DevNum, register_nu
 cmd([#write_coil_status{} | T], #s{stage = _} = S) ->
     cmd(T, S);
 
+cmd([#write_coils_status{} | T], #s{sock_info = #sock_info{socket = undefined}, stage = {stop, _Reason}} = S) ->
+    cmd(T, S);
 cmd([#write_coils_status{transaction_id = Id, device_number = DevNum, register_number = RegNum, quantity = Quantity, registers_value = Values} | T], #s{stage = {stop, _Reason}} = S) ->
     write_cregs(T, {Id, DevNum, RegNum, Quantity, Values}, S);
 cmd([#write_coils_status{transaction_id = Id, device_number = DevNum, register_number = RegNum, quantity = Quantity, registers_value = Values} | T], #s{stage = connect} = S) ->
@@ -401,6 +471,10 @@ cmd([], S) ->
             send_message(S#s{send_buff = Buff})
     end.
 
+%% ----------------------------------------------------------------------------
+%% @doc disconnect callback invokes when master disconnected to slave device.
+%% @enddoc
+%% ----------------------------------------------------------------------------
 disconnect_it(Reason, S) ->
     Mod = S#s.mod,
     try
@@ -410,33 +484,27 @@ disconnect_it(Reason, S) ->
         C:R:Stacktrace -> {'EXIT', C, R, Stacktrace}
     end.
 
-cmd_disconnect(T, Reason, #s{stage = {stop, Reason}} = S) ->
-    Socket = S#s.sock_info#sock_info.socket,
-    Socket =/= undefined andalso
-        gen_tcp:close(Socket),
-    S2 = S#s{send_buff = <<>>, recv_buff = <<>>, sock_info = #sock_info{socket = undefined}},
-    case disconnect_it(Reason, S2) of
-        {ok, Command, S3} ->
-            cmd(Command ++ T, S2#s{state = S3, stage = {stop, Reason}});
-        {stop, _Reason, Command, S3} ->
-            cmd(Command ++ T, S2#s{state = S3, stage = {stop, Reason}});
-        {'EXIT', Class, Reason2, Strace} ->
-            erlang:raise(Class, Reason2, Strace)
-    end;
 cmd_disconnect(T, Reason, S) ->
     Socket = S#s.sock_info#sock_info.socket,
     Socket =/= undefined andalso
         gen_tcp:close(Socket),
     S2 = S#s{send_buff = <<>>, recv_buff = <<>>, sock_info = #sock_info{socket = undefined}},
-    case disconnect_it(Reason, S2) of
-        {ok, Command, S3} ->
-            cmd(Command ++ T, S2#s{state = S3, stage = disconnect});
-        {stop, _Reason, Command, S3} ->
-            cmd(Command ++ T, S2#s{state = S3, stage = {stop, Reason}});
-        {'EXIT', Class, Reason, Strace} ->
-            erlang:raise(Class, Reason, Strace)
-    end.
+    Res = disconnect_it(Reason, S2),
+    cmd_disconnect_(Res, T, S2).
 
+cmd_disconnect_({ok, Command, SS}, T, #s{stage = {stop, Reason}} = S) ->
+    cmd(Command ++ T, S#s{state = SS, stage = {stop, Reason}});
+cmd_disconnect_({ok, Command, SS}, T, S) ->
+    cmd(Command ++ T, S#s{state = SS, stage = disconnect});
+cmd_disconnect_({stop, Reason, Command, SS}, T, S) ->
+    cmd(Command ++ T, S#s{state = SS, stage = {stop, Reason}});
+cmd_disconnect_({'EXIT', Class, Reason2, Strace}, _T, _S) ->
+    erlang:raise(Class, Reason2, Strace).
+
+%% ----------------------------------------------------------------------------
+%% @doc connect callback invokes when master connected to slave device.
+%% @enddoc
+%% ----------------------------------------------------------------------------
 connect_it(S) ->
     Mod = S#s.mod,
     try
@@ -446,43 +514,32 @@ connect_it(S) ->
         C:R:Stacktrace -> {'EXIT', C, R, Stacktrace}
     end.
 
-cmd_connect(T, #s{stage = {stop, Reason}} = S, {Ip_addr, Port}) ->
+cmd_connect(T, S, {Ip_addr, Port}) ->
     case {_, Socket} = gen_tcp:connect(Ip_addr, Port, S#s.sock_opts) of
         {ok, _} ->
             S2 = S#s{sock_info = #sock_info{
                 socket = Socket,
                 ip_addr = Ip_addr,
                 port = Port}},
-            case connect_it(S2) of
-                {ok, Command, S3} ->
-                    cmd(Command ++ T, S2#s{state = S3, stage = {stop, Reason}});
-                {stop, _Reason, Command, S3} ->
-                    cmd(Command ++ T, S2#s{state = S3, stage = {stop, Reason}});
-                {'EXIT', Class, Reason, Strace} ->
-                    erlang:raise(Class, Reason, Strace)
-            end;
+            Res = connect_it(S2),
+            cmd_connect_(Res, T, S2);
         {error, Reason} ->
             cmd_disconnect(T, Reason, S#s{stage = {stop, Reason}})
-    end;
-cmd_connect(T, S, {IpAddr, Port}) ->
-    case {_, Socket} = gen_tcp:connect(IpAddr, Port, S#s.sock_opts) of
-        {ok, _} ->
-            S2 = S#s{sock_info = #sock_info{
-                socket = Socket,
-                ip_addr = IpAddr,
-                port = Port}},
-            case connect_it(S2) of
-                {ok, Command, S3} ->
-                    cmd(Command ++ T, S2#s{state = S3, stage = connect});
-                {stop, Reason, Command, S3} ->
-                    cmd(Command ++ T, S2#s{state = S3, stage = {stop, Reason}});
-                {'EXIT', Class, Reason, Strace} ->
-                    erlang:raise(Class, Reason, Strace)
-            end;
-        {error, Reason} ->
-            cmd_disconnect(T, Reason, S)
     end.
 
+cmd_connect_({ok, Command, SS}, T, #s{stage = {stop, Reason}} = S) ->
+    cmd(Command ++ T, S#s{state = SS, stage = {stop, Reason}});
+cmd_connect_({ok, Command, SS}, T, S) ->
+    cmd(Command ++ T, S#s{state = SS, stage = connect});
+cmd_connect_({stop, Reason, Command, SS}, T, S) ->
+    cmd(Command ++ T, S#s{state = SS, stage = {stop, Reason}});
+cmd_connect_({'EXIT', Class, Reason2, Strace}, _T, _S) ->
+    erlang:raise(Class, Reason2, Strace).
+
+%% ----------------------------------------------------------------------------
+%% @doc transform messages to modbus TCP protocol packet.
+%% @enddoc
+%% ----------------------------------------------------------------------------
 read_hregs(T, {Id, DevNum, RegNum, Quantity}, #s{send_buff = Buff} = S) ->
     Packet = <<Id:16, 0:16, 6:16, DevNum:8, ?FUN_CODE_READ_HREGS:8, RegNum:16, Quantity:16>>,
     cmd(T, S#s{send_buff = <<Buff/binary, Packet/binary>>}).
@@ -524,9 +581,12 @@ write_cregs(T, {Id, DevNum, RegNum, Quantity, Values}, #s{send_buff = Buff} = S)
     Packet = <<Id:16, 0:16, 8:16, DevNum:8, ?FUN_CODE_WRITE_COILS:8, RegNum:16, Quantity:16, 1:8, Values:8>>,
     cmd(T, S#s{send_buff = <<Buff/binary, Packet/binary>>}).
 
+%% ----------------------------------------------------------------------------
+%% @doc count header for multiple modbus requests.
+%% @enddoc
+%% ----------------------------------------------------------------------------
 count_mbap(<<>>) ->
     <<>>;
-
 count_mbap(<<Id:16, 0:16, Len:16, Buff/binary>>) ->
     {MsgLen, Pdu} = count_mbap_(<<Len:16, Buff/binary>>),
     <<Id:16, 0:16, MsgLen:16, Pdu:MsgLen/binary>>.
@@ -536,6 +596,10 @@ count_mbap_(<<MsgLen:16, Pdu:MsgLen/binary, _Id:16, 0:16, Len:16, Tail/binary>>)
     count_mbap_(<<MsgLen2:16, Pdu/binary, Tail/binary>>);
 count_mbap_(<<MsgLen:16, Pdu:MsgLen/binary>>) -> {MsgLen, Pdu}.
 
+%% ----------------------------------------------------------------------------
+%% @doc send message to modbus TCP slave device.
+%% @enddoc
+%% ----------------------------------------------------------------------------
 send_message(S) ->
     Socket = S#s.sock_info#sock_info.socket,
     Packet = S#s.send_buff,
@@ -545,29 +609,37 @@ send_message_(#s{stage = {stop, Reason}} = S, ok) -> {stop, Reason, S};
 send_message_(S, ok) -> S;
 send_message_(S, {error, Reason}) -> cmd_disconnect([], Reason, S).
 
+%% ----------------------------------------------------------------------------
+%% @doc transform record with socket options to proplist.
+%% @enddoc
+%% ----------------------------------------------------------------------------
 change_sopts(Opts, S) ->
     SockOpts = lists:filter(fun(X) -> X =/= undefined end, Opts),
     S#s{sock_opts = SockOpts}.
 
+%% ----------------------------------------------------------------------------
+%% @doc parse response from modbus TCP slave device.
+%% @enddoc
+%% ----------------------------------------------------------------------------
 parser(Chunk, #s{recv_buff = Buffer} = S) ->
     parser_(<<Buffer/binary, Chunk/binary>>, {ok, [], S#s.state}, S).
 
-parser_(<<Id:16, 0:16, MsgLen:16, Payload:MsgLen/binary, Tail/binary>>, {ok, Command, S2}, S) ->
-    case cmd(Command, S#s{state = S2, recv_buff = Tail}) of
+parser_(<<Id:16, 0:16, MsgLen:16, Payload:MsgLen/binary, Tail/binary>>, {ok, Command, SS}, S) ->
+    case cmd(Command, S#s{state = SS, recv_buff = Tail}) of
         {stop, _Reason, S3} ->
             parser__(Id, Payload, S3);
         S3 ->
             parser__(Id, Payload, S3)
     end;
 
-parser_(<<Id:16, 0:16, MsgLen:16, Payload:MsgLen/binary, Tail/binary>>, {stop, Reason, Command, S2}, S) ->
-    {stop, _, S3} = cmd(Command, S#s{recv_buff = Tail, stage = {stop, Reason}, state = S2}),
+parser_(<<Id:16, 0:16, MsgLen:16, Payload:MsgLen/binary, Tail/binary>>, {stop, Reason, Command, SS}, S) ->
+    {stop, _, S3} = cmd(Command, S#s{recv_buff = Tail, stage = {stop, Reason}, state = SS}),
     parser__(Id, Payload, S3);
 
 parser_(<<_Id:16, 0:16, MsgLen:16, _Payload:MsgLen/binary, _Tail/binary>>, {'EXIT', Class, Reason, Strace}, _S) ->
     erlang:raise(Class, Reason, Strace);
 
-parser_(<<_Id:16, _Other:16, _/binary>>, _Res, S) ->
+parser_(<<_Id:16, _Other:16, _MsgLen:16, _/binary>>, _Res, S) ->
     {noreply, S#s{recv_buff = <<>>}};
 
 parser_(Buffer, Res, S) ->
@@ -633,6 +705,10 @@ parser__(Id, <<DevNum:8, ?ERR_CODE_WRITE_COILS:8, Err_code:8>>, S) ->
 parser__(_Id, <<_/binary>>, S) ->
     parser_(<<>>, {ok, [], S#s.state}, S).
 
+%% ----------------------------------------------------------------------------
+%% @doc message calllback invokes when master received response from slave.
+%% @enddoc
+%% ----------------------------------------------------------------------------
 message(RegFun, S) ->
     Mod = S#s.mod,
     Res =
@@ -644,11 +720,19 @@ message(RegFun, S) ->
     end,
     parser_(S#s.recv_buff, Res, S).
 
+%% ----------------------------------------------------------------------------
+%% @doc transform binary(unit equal 16) to list of values.
+%% @enddoc
+%% ----------------------------------------------------------------------------
 bin_to_list16(<<>>, Acc) ->
     lists:reverse(Acc);
 bin_to_list16(<<H:16, T/binary>>, Acc) ->
     bin_to_list16(T, [H | Acc]).
 
+%% ----------------------------------------------------------------------------
+%% @doc transform list of values to binary(unit equal 16).
+%% @enddoc
+%% ----------------------------------------------------------------------------
 list_to_bin16([], Acc) ->
     Acc;
 list_to_bin16([H | T], Acc) ->

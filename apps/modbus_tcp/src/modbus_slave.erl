@@ -10,24 +10,15 @@
 
 -define(DEVICE_NUM, 2).
 
--define(DEFAULT_SOCK_OPTS, [
-    inet,
-    binary,
-    {active, true},
-    {packet, raw},
-    {reuseaddr, true},
-    {nodelay, true}
-    ]).
+-define(SERVER, gen_slave).
+
+-define(PORT, 5000).
 
 -record(s, {
     s = state,
     allowed_connections :: integer(),
     active_socks = []
     }).
-
--define(SERVER, gen_slave).
-
--define(PORT, 5000).
 
 -export([
     start/0,
@@ -74,7 +65,7 @@ message(RegInfo, S) ->
     {ok, [], S}.
 
 handle_call(Msg, _From, S) ->
-    io:format("Handle call ~w.~n", [Msg]),
+    io:format("Handle call message is ~w.~n", [Msg]),
     {reply, Msg, [], S}.
 
 handle_cast({alarm, on, 1}, S) ->
@@ -118,7 +109,7 @@ handle_cast({alarm, off, 5}, S) ->
     {noreply, [Alarm], S};
 
 handle_cast(Request, S) ->
-    io:format("Request is ~w~n", [Request]),
+    io:format("handle cast request is ~w~n", [Request]),
     {noreply, [], S}.
 
 handle_continue(_Info, S) ->

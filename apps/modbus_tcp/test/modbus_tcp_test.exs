@@ -2,12 +2,15 @@ defmodule ModbusTcpTest do
     use ExUnit.Case
     require Record
 
-    :application.stop(:modbus_master)
-
     Record.defrecord(:sock_info,
         socket: :undefined,
         ip_addr: 'localhost',
         port: 502)
+
+    Record.defrecord(:slave_state,
+        s: :state,
+        allowed_connections: 3,
+        active_socks: [])
 
     Record.defrecord(:disconnect,
         reason: :normal)
@@ -95,11 +98,25 @@ defmodule ModbusTcpTest do
         assert :application.stop(:modbus_tcp) == :ok
     end
 
+    test "alarm handle cast" do
+        assert :gen_slave.cast(:gen_slave, {:alarm, :off, 1}) == :ok
+        assert :gen_slave.cast(:gen_slave, {:alarm, :on, 2}) == :ok
+        assert :gen_slave.cast(:gen_slave, {:alarm, :off, 3}) == :ok
+        assert :gen_slave.cast(:gen_slave, {:alarm, :on, 4}) == :ok
+        assert :gen_slave.cast(:gen_slave, {:alarm, :on, 5}) == :ok
+        assert :gen_slave.cast(:gen_slave, :something) == :ok
+    end
+
     test "test handle" do
         assert :modbus_master.handle_call(:msg, self(), :state) == {:reply, :msg, [], :state}
         assert :modbus_master.handle_continue(:msg, :state) == {:noreply, [], :state}
         assert :modbus_master.handle_info(:msg, :state) == {:noreply, [], :state}
         assert :modbus_master.handle_cast(:msg, :state) == {:noreply, [], :state}
+
+        assert :modbus_slave.handle_call(:msg, self(), :state) == {:reply, :msg, [], :state}
+        assert :modbus_slave.handle_continue(:msg, :state) == {:noreply, [], :state}
+        assert :modbus_slave.handle_info(:msg, :state) == {:noreply, [], :state}
+        assert :modbus_slave.handle_cast(:msg, :state) == {:noreply, [], :state}
     end
 
     test "message" do
@@ -126,5 +143,11 @@ defmodule ModbusTcpTest do
 
         assert :modbus_master.message(write_coils_status(), :state) ==
         {:ok, [read_register(type: :holding)], :state}
+
+        assert :modbus_slave.message({:alarm, :on, 2}, slave_state()) ==
+        {:ok, [], slave_state()}
+
+        assert :modbus_slave.message({:alarm, :off, 1}, slave_state()) ==
+        {:ok, [], slave_state()}
     end
 end
