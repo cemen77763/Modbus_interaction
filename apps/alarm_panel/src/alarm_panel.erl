@@ -73,7 +73,7 @@ status() ->
 %%% @end
 %%% ---------------------------------------------------------------------------
 init([]) ->
-    {ok, [wait_connect], #s{}}.
+    {ok, [#wait_connect{}], #s{}}.
 
 %%% ---------------------------------------------------------------------------
 %%% @doc when master device connect.
@@ -82,10 +82,10 @@ init([]) ->
 connect(Sock, #s{allowed_connections = Connections, active_socks = ASocks} = S) ->
     case Connections > 0 of
         true ->
-            io:format("Alarm panel connected to ~w.~n", [Sock]),
-            {ok, [wait_connect], S#s{active_socks = [Sock | ASocks], allowed_connections = Connections - 1}};
+            logger:info("Alarm panel connected to ~w.~n", [Sock]),
+            {ok, [#wait_connect{}], S#s{active_socks = [Sock | ASocks], allowed_connections = Connections - 1}};
         _ ->
-            io:format("Alarm panel connections limit reached.~n"),
+            logger:info("Alarm panel connections limit reached.~n"),
             {ok, [], S}
     end.
 
@@ -94,8 +94,8 @@ connect(Sock, #s{allowed_connections = Connections, active_socks = ASocks} = S) 
 %%% @end
 %%% ---------------------------------------------------------------------------
 disconnect(Sock, Reason, #s{active_socks = ASocks, allowed_connections = Connections} = S) ->
-    io:format("Alarm panel disconnected because ~w from ~w.~n", [Reason, Sock]),
-    {ok, [wait_connect], S#s{active_socks = lists:delete(Sock, ASocks), allowed_connections = Connections + 1}}.
+    logger:info("Alarm panel disconnected because ~w from ~w.~n", [Reason, Sock]),
+    {ok, [#wait_connect{}], S#s{active_socks = lists:delete(Sock, ASocks), allowed_connections = Connections + 1}}.
 
 %%% ---------------------------------------------------------------------------
 %%% @doc receive write and read coils message and send confirm message, on
@@ -115,8 +115,9 @@ message(#write_coils{reg_num = RegNum, quantity = Quantity, val = Val, response 
     C2 = (C band (255 bsl (Quantity + RegNum) bor ones(RegNum))) bor Val2,
     {ok, [#response{socket = Socket, response = Resp}], S#s{coils = C2}};
 
-message(#read_coils{reg_num = _RegNum, response = Resp}, Socket, #s{coils = Values} = S) ->
-    {ok, [#response{socket = Socket, response = <<Resp/binary, Values>>}], S};
+message(#read_coils{reg_num = RegNum, response = Resp}, Socket, #s{coils = C} = S) ->
+    C2 = C bsr RegNum,
+    {ok, [#response{socket = Socket, response = <<Resp/binary, C2>>}], S};
 
 message(#write_hreg{response = Resp}, Socket, S) ->
     {ok, [#error_response{error_code = 2, response = Resp, socket = Socket}], S};
@@ -137,13 +138,11 @@ message(#undefined_code{response = Resp}, Socket, S) ->
     {ok, [#error_response{error_code = 3, response = Resp, socket = Socket}], S}.
 
 %%% ---------------------------------------------------------------------------
-%%% @doc handle_call(get_status, ...) return state list of coils [1, 2, 3, 4,
-%%% 5].
+%%% @doc handle_call(get_status, ...) return coils.
 %%% @enddoc
 %%% ---------------------------------------------------------------------------
-handle_call(get_status, _From, S) ->
-    Stat = S#s.coils,
-    {reply, Stat, [], S};
+handle_call(get_status, _From, #s{coils = C} = S) ->
+    {reply, C, [], S};
 
 handle_call(Msg, _From, S) ->
     {reply, Msg, [], S}.
@@ -165,7 +164,7 @@ handle_cast({alarm, off, Num}, #s{coils = C} = S) ->
 %%% @end
 %%% ---------------------------------------------------------------------------
 handle_cast(Request, S) ->
-    io:format("Alarm panel receive unknown call request ~w.~n", [Request]),
+    logger:notice("Alarm panel receive unknown call request ~w.~n", [Request]),
     {noreply, [], S}.
 
 %%% ---------------------------------------------------------------------------
@@ -181,11 +180,11 @@ handle_info(_Info, S) ->
     {noreply, [], S}.
 
 %%% ---------------------------------------------------------------------------
-%%% @doc this calls when gen_slave terminated.
+%%% @doc terminate calls when gen_slave terminated.
 %%% @enddoc
 %%% ---------------------------------------------------------------------------
 terminate(Reason, S) ->
-    io:format("Alarm panel terminated, reason: ~w, S: ~w.~n", [Reason, S]),
+    logger:info("Alarm panel terminated, reason: ~w, S: ~w.~n", [Reason, S]),
     ok.
 
 %%% ---------------------------------------------------------------------------

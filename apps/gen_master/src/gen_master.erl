@@ -453,6 +453,9 @@ cmd([#write_coils_status{transaction_id = Id, device_number = DevNum, register_n
 cmd([#write_coils_status{} | T], #s{stage = _} = S) ->
     cmd(T, S);
 
+cmd([#stop{reason = Reason} | T], S) ->
+    cmd(T, S#s{stage = {stop, Reason}});
+
 cmd([], #s{stage = {stop, Reason}, send_buff = <<>>} = S) ->
     {stop, Reason, S};
 cmd([], #s{send_buff = <<>>} = S) ->

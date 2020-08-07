@@ -1,10 +1,9 @@
 -type cmd() ::
+    records:wait_connect() |
     records:disconnect() |
-    records:alarm() |
-    wait_connect |
-    {response, Socket :: gen_tcp:socket(), Response :: binary()} |
-    {error_response, ErrCode :: integer(), Response :: binary(), Socket :: gen_tcp:socket()} |
-    {stop, Reason :: term()}.
+    records:response() |
+    records:error_response() |
+    records:stop().
 
 -type reg_info() ::
     records:write_coil() |
@@ -78,6 +77,8 @@
 %%% ------------------------- GEN SLAVE REGISTERS INFO ----------------------------
 
 %%% ------------------------- GEN SLAVE COMMANDS RECORDS --------------------------
+-record(wait_connect, {}).
+
 -record(disconnect, {
     socket :: gen_tcp:socket(),
     reason :: term()
@@ -96,11 +97,6 @@
 
 -record(stop, {
     reason :: term()
-    }).
-
--record(alarm, {
-    type :: 1 | 2 | 3 | 4 | 5,
-    status :: on | off
     }).
 
 %%% ------------------------- GEN SLAVE COMMANDS RECORDS --------------------------

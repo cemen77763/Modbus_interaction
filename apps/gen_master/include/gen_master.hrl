@@ -8,8 +8,7 @@
     record:write_holding_registers() |
     record:write_coil_status() |
     record:write_coils_status() |
-    record:wait_connect() |
-    record:alarm().
+    record:stop().
 
 -record(sock_info, {
     socket :: gen_tcp:socket() | undefined,
@@ -24,6 +23,10 @@
     }).
 
 -record(disconnect, {
+    reason :: term()
+    }).
+
+-record(stop, {
     reason :: term()
     }).
 
