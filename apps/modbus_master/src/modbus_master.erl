@@ -8,6 +8,10 @@
 
 -include_lib("gen_master/include/gen_master.hrl").
 
+-define(IP_ADDR, "localhost").
+
+-define(PORT, 5000).
+
 -export([
     start/0,
     stop/0
@@ -26,17 +30,33 @@
     terminate/2
     ]).
 
+%%% ---------------------------------------------------------------------------
+%%% @doc start gen_master.
+%%% @end
+%%% ---------------------------------------------------------------------------
 start() ->
     gen_master:start_link({local, ?MODULE}, ?MODULE, [], []).
 
+%%% ---------------------------------------------------------------------------
+%%% @doc stop gen_master.
+%%% @end
+%%% ---------------------------------------------------------------------------
 stop() ->
     gen_master:stop(?MODULE).
 
+%%% ---------------------------------------------------------------------------
+%%% @doc Connect to IP_ADDR and PORT in init.
+%%% @end
+%%% ---------------------------------------------------------------------------
 init([]) ->
     ChangeSopts = #change_sock_opts{reuseaddr = true, nodelay = true},
-    Connect = #connect{ip_addr = "localhost", port = 5000},
+    Connect = #connect{ip_addr = ?IP_ADDR, port = ?PORT},
     {ok, [ChangeSopts, Connect], 5}.
 
+%%% ---------------------------------------------------------------------------
+%%% @doc called when connected to modbus tcp slave device.
+%%% @end
+%%% ---------------------------------------------------------------------------
 connect(#sock_info{socket = _Sock, ip_addr = Ip_addr, port = Port}, S) ->
     WriteHreg = #write_holding_register{
         transaction_id = 1,
@@ -47,11 +67,18 @@ connect(#sock_info{socket = _Sock, ip_addr = Ip_addr, port = Port}, S) ->
     io:format("Connection fine Ip addr: ~w Port ~w~n", [Ip_addr, Port]),
     {ok, [WriteHreg], S}.
 
+%%% ---------------------------------------------------------------------------
+%%% @doc called when disconnected from modbus tcp slave device.
+%%% @end
+%%% ---------------------------------------------------------------------------
 disconnect(_Reason, S) ->
-    Connect = #connect{ip_addr = "localhost", port = 5000},
-    _Disconnect = #disconnect{reason = normal},
-    {ok, [Connect], S}.
+    _Connect = #connect{ip_addr = ?IP_ADDR, port = ?PORT},
+    {ok, [], S}.
 
+%%% ---------------------------------------------------------------------------
+%%% @doc test read and write  all registers.
+%%% @end
+%%% ---------------------------------------------------------------------------
 message(#read_register{type = holding, device_number = Dev_num, register_number = Reg_num, registers_value = Ldata}, S) ->
     ReadIreg = #read_register{
         transaction_id = 1,
@@ -129,6 +156,11 @@ message(#write_coils_status{device_number = Dev_num, register_number = Reg_num, 
 message(_RegInfo, S) ->
     {ok, [], S}.
 
+
+%%% ---------------------------------------------------------------------------
+%%% @doc set coil in alarm panel.
+%%% @end
+%%% ---------------------------------------------------------------------------
 handle_call({alarm, Num}, _From, S) ->
     WriteCoil = #write_coil_status{
         transaction_id = 1,
@@ -137,6 +169,10 @@ handle_call({alarm, Num}, _From, S) ->
         register_value = Num - 1},
     {noreply, [WriteCoil], S};
 
+%%% ---------------------------------------------------------------------------
+%%% @doc handles like in gen_server.
+%%% @end
+%%% ---------------------------------------------------------------------------
 handle_call(Request, _From, S) ->
     io:format("Request is ~w~n", [Request]),
     {reply, Request, [], S}.
@@ -150,6 +186,10 @@ handle_info(_Info, S) ->
 handle_cast(_Request, S) ->
     {noreply, [], S}.
 
+%%% ---------------------------------------------------------------------------
+%%% @doc terminate calls when gen_master stopped.
+%%% @end
+%%% ---------------------------------------------------------------------------
 terminate(Reason, S) ->
     io:format("Terminating reason: ~w, S: ~w~n", [Reason, S]),
     ok.

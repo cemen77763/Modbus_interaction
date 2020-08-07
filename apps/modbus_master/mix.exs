@@ -21,7 +21,7 @@ defmodule ModbusMaster.MixProject do
         registered: [:modbus_master],
         description: ['Application to interact with modbus TCP devices'],
         licenses: ['Apache 2.0'],
-        included_applications: [:modbus_master]
+        included_applications: [:gen_master]
         ]
     end
 

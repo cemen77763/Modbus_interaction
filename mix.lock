@@ -1,0 +1,6 @@
+%{
+  "chronica": {:git, "https://github.com/eltex-ecss/chronica.git", "30e856bb39e0d70b00ba1216ad6fa104f6a8c239", [tag: "1.0.0"]},
+  "meck": {:git, "https://github.com/eproxus/meck.git", "8c6b6e436faab45e4dbf0c4e38137855f1c86586", [tag: "0.9.0"]},
+  "pt_lib": {:git, "https://github.com/eltex-ecss/pt_lib.git", "9aded29230e7dc269feee30b4ce1c5518f5ffac0", []},
+  "pt_scripts": {:git, "https://github.com/eltex-ecss/pt_scripts.git", "c05a0c67608f67a5e0bd23324ba0386f27186342", []},
+}

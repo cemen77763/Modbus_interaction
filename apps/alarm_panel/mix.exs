@@ -19,10 +19,10 @@ defmodule AlarmPanel.MixProject do
     def application do
         [
         mod: {:alarm_panel_app, []},
-        registered: [:alarm_panel],
+        registered: [:alarm_panel, :alarm_panel_app],
         description: ['Application to interact with modbus TCP devices'],
         licenses: ['Apache 2.0'],
-        included_applications: [:alarm_panel]
+        included_applications: [:gen_slave]
         ]
     end
 

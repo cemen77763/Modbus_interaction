@@ -1,8 +1,14 @@
 defmodule GenSlaveTest do
   use ExUnit.Case
-  doctest GenSlave
+    require Record
 
-  test "greets the world" do
-    assert GenSlave.hello() == :world
-  end
+    Record.defrecord(:s,
+        state: :state,
+        stage: :init,
+        mod: :alarm_panel,
+        device: 2,
+        listen_sock: :lsock,
+        active_socks: [:sock],
+        buff: %{}
+        )
 end

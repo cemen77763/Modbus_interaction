@@ -507,9 +507,11 @@ disconnect_it(Sock, Reason, S) ->
 
 %% ----------------------------------------------------------------------------
 %% @doc commands for interaction with gen_slave module from callbacks return
-%% wait_connect => waiting for connection with master device
-%% disconnect (Socket, Reason) => disconnected from Socket
-%% alarm (Status, Type) => change coils registers 0 -- 5
+%% wait_connect => waiting for connection with master device;
+%% disconnect (Socket, Reason) => disconnected from Socket;
+%% response (Socket, Response) => send response to the master request;
+%% error_response (ErrorCode, Response, Socket) => send error response with
+%% error code;
 %% {stop, Reason} => stop gen_slave device.
 %% @enddoc
 %% ----------------------------------------------------------------------------
@@ -592,6 +594,7 @@ cmd_disconnect_({stop, Reason, Command, SS}, T, S) ->
     cmd(Command ++ T, S#s{state = SS, stage = {stop, Reason}});
 cmd_disconnect_({'EXIT', Class, Reason2, Strace}, _T, _S) ->
     erlang:raise(Class, Reason2, Strace).
+
 %% ----------------------------------------------------------------------------
 %% @doc message callback invokes when coils registers was changed or readed.
 %% @enddoc
@@ -604,9 +607,3 @@ cmd_message_it(Info, Sock, S) ->
         throw:R -> {ok, R};
         C:R:Stacktrace -> erlang:raise(C, R, Stacktrace)
     end.
-
-%% ----------------------------------------------------------------------------
-%% @doc change coil registers of slave device.
-%% @enddoc
-%% ----------------------------------------------------------------------------
-

@@ -18,7 +18,7 @@ defmodule GenSlave.MixProject do
     # Run "mix help compile.app" to learn about applications.
     def application do
         [
-        registered: [:gen_slave],
+        registered: [],
         description: ['Behaviour to interact with modbus TCP devices'],
         licenses: ['Apache 2.0']
         ]
