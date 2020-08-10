@@ -1,12 +1,21 @@
 ecss_modbus
 =====
-gen_modbus
+gen_modbus_m
 -----
-An OTP library behaviour for interaction with modbus tcp slave devices
+An OTP library behaviour для реализации modbus TCP мастер устройства
 -----
-modbus_tcp
+gen_modbus_s
 -----
-An OTP application for interaction with modbus tcp slave devices
+An OTP library behaviour для реализации modbus TCP слэйв устройства
+-----
+modbus_master
+-----
+An OTP application, реализующее взаимодействие со слэйв устройством по протоколу modbus TCP
+-----
+alarm_panel
+-----
+An OTP application, реализующее слэйв устройство, работающее по протоколу modbus TCP
+-----
 
 Build
 -----
