@@ -2,11 +2,11 @@
 %%% @doc Behaviour to interact with modbus TCP devices
 %%% @enddoc
 %%% ---------------------------------------------------------------------------
--module(gen_master).
+-module(gen_modbus_m).
 
 -behaviour(gen_server).
 
--include("gen_master.hrl").
+-include("gen_modbus_m.hrl").
 
 %% API
 -export([
@@ -50,9 +50,40 @@
     }).
 
 %%% ---------------------------------------------------------------------------
-%%% API
+%%% @doc
+%%%   The work flow (of the modbus mster) can be described as follows:
+%%%
+%%%   User module                          Generic
+%%%   -----------                          -------
+%%%     start_link       ----->             start_link
+%%%     init             <-----              .
+%%%     Command          ----->              .
+%%%
+%%%     message          <-----              .
+%%%     Command          ----->              .
+%%%
+%%%     connect          <-----              .
+%%%     Command          ----->              .
+%%%
+%%%     disconnect       <-----              .
+%%%     Command          ----->              .
+%%%
+%%%     handle_call      <-----              .
+%%%                      ----->             reply
+%%%     Command          ----->              .
+%%%
+%%%     handle_cast      <-----              .
+%%%     Command          ----->              .
+%%%
+%%%     handle_info      <-----              .
+%%%     Command          ----->              .
+%%%
+%%%     terminate        <-----              .
+%%%     Command          ----->              .
+%%%
+%%%                      ----->             reply
+%%%@enddoc
 %%% ---------------------------------------------------------------------------
-
 -callback init(Args :: term()) ->
     {ok, Command :: cmd(), State :: term()} | {ok, Command :: cmd(), State :: term(), timeout() | hibernate | {continue, term()}} |
     {stop, Reason :: term()} | ignore.
@@ -97,6 +128,10 @@
 
 -optional_callbacks([terminate/2]).
 
+%% ----------------------------------------------------------------------------
+%% @doc start a gen master.
+%% @enddoc
+%% ----------------------------------------------------------------------------
 -spec start_link(Module::atom(), [Args::term()], [Options::gen_server:options()]) ->
     {ok, Pid::pid()} | ignore | {error, Reason::term()}.
 start_link(Mod, Args, Options) ->
@@ -107,10 +142,18 @@ start_link(Mod, Args, Options) ->
 start_link(Name, Mod, Args, Options) ->
     gen_server:start_link(Name, ?MODULE, [Mod, Args], Options).
 
+%% ----------------------------------------------------------------------------
+%% @doc make a cast to gen master.
+%% @enddoc
+%% ----------------------------------------------------------------------------
 -spec cast(Name::atom(), Message::term()) -> ok.
 cast(Name, Message) ->
     gen_server:cast(Name, Message).
 
+%% ----------------------------------------------------------------------------
+%% @doc make a call to gen master.
+%% @enddoc
+%% ----------------------------------------------------------------------------
 -spec call(Name::atom(), Message::term()) -> Reply::term().
 call(Name, Message) ->
     gen_server:call(Name, Message).
@@ -119,6 +162,10 @@ call(Name, Message) ->
 call(Name, Message, Timeout) ->
     gen_server:call(Name, Message, Timeout).
 
+%% ----------------------------------------------------------------------------
+%% @doc stop a gen master.
+%% @enddoc
+%% ----------------------------------------------------------------------------
 -spec stop(Name::atom()) -> ok.
 stop(Name) ->
     gen_server:stop(Name).

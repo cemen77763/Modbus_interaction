@@ -23,7 +23,7 @@ start(_StartType, _StartArgs) ->
     start_link().
 
 stop(_State) ->
-    gen_slave:stop(?PANEL).
+    gen_modbus_s:stop(?PANEL).
 
 start_link() ->
     supervisor:start_link({local, ?MODULE}, ?MODULE, []).
@@ -40,7 +40,7 @@ start_link() ->
 
 init([]) ->
     SupFlags = #{
-        strategy => one_for_all,
+        strategy => one_for_one,
         intensity => 3,
         period => 1000},
     ChildSpecs = [

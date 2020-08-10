@@ -4,9 +4,9 @@
 %%% -----------------------------------------------------------------------------------------
 -module(modbus_master).
 
--behaviour(gen_master).
+-behaviour(gen_modbus_m).
 
--include_lib("gen_master/include/gen_master.hrl").
+-include_lib("gen_modbus_m/include/gen_modbus_m.hrl").
 
 -define(IP_ADDR, "localhost").
 
@@ -14,7 +14,8 @@
 
 -export([
     start/0,
-    stop/0
+    stop/0,
+    test_registers/0
     ]).
 
 % gen_modbus callbacks
@@ -31,18 +32,26 @@
     ]).
 
 %%% ---------------------------------------------------------------------------
-%%% @doc start gen_master.
+%%% @doc start gen_modbus_m.
 %%% @end
 %%% ---------------------------------------------------------------------------
 start() ->
-    gen_master:start_link({local, ?MODULE}, ?MODULE, [], []).
+    gen_modbus_m:start_link({local, ?MODULE}, ?MODULE, [], []).
 
 %%% ---------------------------------------------------------------------------
-%%% @doc stop gen_master.
+%%% @doc stop gen_modbus_m.
 %%% @end
 %%% ---------------------------------------------------------------------------
 stop() ->
-    gen_master:stop(?MODULE).
+    gen_modbus_m:stop(?MODULE).
+
+%%% ---------------------------------------------------------------------------
+%%% @doc test all modbus registers(input regs, holding regs, coils, inputs)
+%%% in slave device.
+%%% @end
+%%% ---------------------------------------------------------------------------
+test_registers() ->
+    gen_modbus_m:call(?MODULE, {test_registers}).
 
 %%% ---------------------------------------------------------------------------
 %%% @doc Connect to IP_ADDR and PORT in init.
@@ -58,22 +67,16 @@ init([]) ->
 %%% @end
 %%% ---------------------------------------------------------------------------
 connect(#sock_info{socket = _Sock, ip_addr = Ip_addr, port = Port}, S) ->
-    WriteHreg = #write_holding_register{
-        transaction_id = 1,
-        device_number = 2,
-        register_number = 1,
-        register_value = 12
-        },
-    io:format("Connection fine Ip addr: ~w Port ~w~n", [Ip_addr, Port]),
-    {ok, [WriteHreg], S}.
+    error_logger:info_msg("Connection fine Ip addr: ~w Port ~w~n", [Ip_addr, Port]),
+    {ok, [], S}.
 
 %%% ---------------------------------------------------------------------------
 %%% @doc called when disconnected from modbus tcp slave device.
 %%% @end
 %%% ---------------------------------------------------------------------------
 disconnect(_Reason, S) ->
-    _Connect = #connect{ip_addr = ?IP_ADDR, port = ?PORT},
-    {ok, [], S}.
+    Connect = #connect{ip_addr = ?IP_ADDR, port = ?PORT},
+    {ok, [Connect], S}.
 
 %%% ---------------------------------------------------------------------------
 %%% @doc test read and write  all registers.
@@ -86,7 +89,7 @@ message(#read_register{type = holding, device_number = Dev_num, register_number 
         device_number = 2,
         register_number = 1,
         quantity = 5},
-    io:format("~nReading holding registers~ndevice: ~w~nfirst register:~w~ndata: ~w~n~n", [Dev_num, Reg_num, Ldata]),
+    error_logger:info_msg("~nReading holding registers~ndevice: ~w~nfirst register:~w~ndata: ~w~n~n", [Dev_num, Reg_num, Ldata]),
     {ok, [ReadIreg], S};
 
 message(#read_register{type = input, device_number = Dev_num, register_number = Reg_num, registers_value = Ldata}, S) ->
@@ -96,7 +99,7 @@ message(#read_register{type = input, device_number = Dev_num, register_number = 
         device_number = 2,
         register_number = 1,
         quantity = 5},
-    io:format("~nReading input registers~ndevice: ~w~nfirst register: ~w~ndata: ~w~n~n", [Dev_num, Reg_num, Ldata]),
+    error_logger:info_msg("~nReading input registers~ndevice: ~w~nfirst register: ~w~ndata: ~w~n~n", [Dev_num, Reg_num, Ldata]),
     {ok, [ReadCoils], S};
 
 message(#read_status{type = coil, device_number = Dev_num, register_number = Reg_num, quantity = _Quantity, registers_value = Bdata}, S) ->
@@ -107,13 +110,13 @@ message(#read_status{type = coil, device_number = Dev_num, register_number = Reg
         register_number = 12,
         quantity = 5},
     _Disconnect = #disconnect{reason = normal},
-    io:format("~nReading coils status~ndevice: ~w~nfirst register: ~w~ndata: ~w~n~n", [Dev_num, Reg_num, Bdata]),
+    error_logger:info_msg("~nReading coils status~ndevice: ~w~nfirst register: ~w~ndata: ~w~n~n", [Dev_num, Reg_num, Bdata]),
     {ok, [ReadInput], S};
 
 message(#read_status{type = input, device_number = Dev_num, register_number = Reg_num, quantity = _Quantity, registers_value = Bdata}, S) ->
-    Disconnect = #disconnect{reason = normal},
-    io:format("~nReading inputs status~ndevice: ~w~nfirst register: ~w~ndata: ~w~n~n", [Dev_num, Reg_num, Bdata]),
-    {ok, [Disconnect], S};
+    _Disconnect = #disconnect{reason = normal},
+    error_logger:info_msg("~nReading inputs status~ndevice: ~w~nfirst register: ~w~ndata: ~w~n~n", [Dev_num, Reg_num, Bdata]),
+    {ok, [], S};
 
 message(#write_holding_register{device_number = Dev_num, register_number = Reg_num, register_value = Ldata}, S) ->
     WriteHregs = #write_holding_registers{
@@ -121,7 +124,7 @@ message(#write_holding_register{device_number = Dev_num, register_number = Reg_n
         device_number = 2,
         register_number = 2,
         registers_value = [13, 14, 15, 16]},
-    io:format("~nWriting holding register~ndevice: ~w~nfirst register: ~w~ndata: ~w~n~n", [Dev_num, Reg_num, Ldata]),
+    error_logger:info_msg("~nWriting holding register~ndevice: ~w~nfirst register: ~w~ndata: ~w~n~n", [Dev_num, Reg_num, Ldata]),
     {ok, [WriteHregs], S};
 
 message(#write_holding_registers{device_number = Dev_num, register_number = Reg_num, registers_value = Ldata}, S) ->
@@ -130,7 +133,7 @@ message(#write_holding_registers{device_number = Dev_num, register_number = Reg_
         device_number = 2,
         register_number = 0,
         register_value = 1},
-    io:format("~nWriting holding registers~ndevice: ~w~nfirst register: ~w~ndata: ~w~n~n", [Dev_num, Reg_num, Ldata]),
+    error_logger:info_msg("~nWriting holding registers~ndevice: ~w~nfirst register: ~w~ndata: ~w~n~n", [Dev_num, Reg_num, Ldata]),
     {ok, [WriteCoil], S};
 
 message(#write_coil_status{device_number = Dev_num, register_number = Reg_num, register_value = Data}, S) ->
@@ -140,7 +143,7 @@ message(#write_coil_status{device_number = Dev_num, register_number = Reg_num, r
         register_number = 1,
         quantity = 4,
         registers_value = 2#0101},
-    io:format("~nWriting coil status~ndevice: ~w~nfirst register: ~w~ndata: ~w~n~n", [Dev_num, Reg_num, Data]),
+    error_logger:info_msg("~nWriting coil status~ndevice: ~w~nfirst register: ~w~ndata: ~w~n~n", [Dev_num, Reg_num, Data]),
     {ok, [WriteCoils], S};
 
 message(#write_coils_status{device_number = Dev_num, register_number = Reg_num, quantity = _Quantity, registers_value = Bdata}, S) ->
@@ -150,7 +153,7 @@ message(#write_coils_status{device_number = Dev_num, register_number = Reg_num, 
         device_number = 2,
         register_number = 1,
         quantity = 5},
-    io:format("~nWriting coils status~ndevice: ~w~nfirst register: ~w~ndata: ~w~n~n", [Dev_num, Reg_num, Bdata]),
+    error_logger:info_msg("~nWriting coils status~ndevice: ~w~nfirst register: ~w~ndata: ~w~n~n", [Dev_num, Reg_num, Bdata]),
     {ok, [ReadHreg], S};
 
 message(_RegInfo, S) ->
@@ -161,20 +164,21 @@ message(_RegInfo, S) ->
 %%% @doc set coil in alarm panel.
 %%% @end
 %%% ---------------------------------------------------------------------------
-handle_call({alarm, Num}, _From, S) ->
-    WriteCoil = #write_coil_status{
+handle_call({test_registers}, _From, S) ->
+    WriteHreg = #write_holding_register{
         transaction_id = 1,
         device_number = 2,
         register_number = 1,
-        register_value = Num - 1},
-    {noreply, [WriteCoil], S};
+        register_value = 12
+        },
+    {reply, ok, [WriteHreg], S};
 
 %%% ---------------------------------------------------------------------------
 %%% @doc handles like in gen_server.
 %%% @end
 %%% ---------------------------------------------------------------------------
 handle_call(Request, _From, S) ->
-    io:format("Request is ~w~n", [Request]),
+    error_logger:info_msg("Request is ~w~n", [Request]),
     {reply, Request, [], S}.
 
 handle_continue(_Info, S) ->
@@ -187,9 +191,9 @@ handle_cast(_Request, S) ->
     {noreply, [], S}.
 
 %%% ---------------------------------------------------------------------------
-%%% @doc terminate calls when gen_master stopped.
+%%% @doc terminate calls when gen_modbus_m stopped.
 %%% @end
 %%% ---------------------------------------------------------------------------
 terminate(Reason, S) ->
-    io:format("Terminating reason: ~w, S: ~w~n", [Reason, S]),
+    error_logger:info_msg("Terminating reason: ~w, S: ~w~n", [Reason, S]),
     ok.

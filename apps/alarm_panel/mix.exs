@@ -22,7 +22,7 @@ defmodule AlarmPanel.MixProject do
         registered: [:alarm_panel, :alarm_panel_app],
         description: ['Application to interact with modbus TCP devices'],
         licenses: ['Apache 2.0'],
-        included_applications: [:gen_slave]
+        included_applications: [:gen_modbus_s]
         ]
     end
 
@@ -32,7 +32,7 @@ defmodule AlarmPanel.MixProject do
         # {:dep_from_hexpm, "~> 0.3.0"},
         # {:dep_from_git, git: "https://github.com/elixir-lang/my_dep.git", tag: "0.1.0"},
         # {:sibling_app_in_umbrella, in_umbrella: true}
-        {:gen_slave, in_umbrella: true}
+        {:gen_modbus_s, in_umbrella: true}
         ]
     end
 end

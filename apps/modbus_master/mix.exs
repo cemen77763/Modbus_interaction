@@ -21,7 +21,7 @@ defmodule ModbusMaster.MixProject do
         registered: [:modbus_master],
         description: ['Application to interact with modbus TCP devices'],
         licenses: ['Apache 2.0'],
-        included_applications: [:gen_master]
+        included_applications: [:gen_modbus_m]
         ]
     end
 
@@ -31,7 +31,7 @@ defmodule ModbusMaster.MixProject do
         # {:dep_from_hexpm, "~> 0.3.0"},
         # {:dep_from_git, git: "https://github.com/elixir-lang/my_dep.git", tag: "0.1.0"},
         # {:sibling_app_in_umbrella, in_umbrella: true}
-        {:gen_master, in_umbrella: true}
+        {:gen_modbus_m, in_umbrella: true}
         ]
     end
 end

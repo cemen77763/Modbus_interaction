@@ -1,9 +1,9 @@
-defmodule GenMaster.MixProject do
+defmodule GenModbusM.MixProject do
     use Mix.Project
 
     def project do
         [
-        app: :gen_master,
+        app: :gen_modbus_m,
         version: "1.4.0",
         build_path: "../../_build",
         config_path: "../../config/config.exs",

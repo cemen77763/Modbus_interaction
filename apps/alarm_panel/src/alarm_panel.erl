@@ -4,9 +4,9 @@
 %%% ---------------------------------------------------------------------------
 -module(alarm_panel).
 
--behaviour(gen_slave).
+-behaviour(gen_modbus_s).
 
--include_lib("gen_slave/include/gen_slave.hrl").
+-include_lib("gen_modbus_s/include/gen_modbus_s.hrl").
 
 -define(DEVICE_NUM, 2).
 
@@ -40,18 +40,18 @@
     ]).
 
 %%% ---------------------------------------------------------------------------
-%%% @doc start gen_slave.
+%%% @doc start gen modbus slave.
 %%% @end
 %%% ---------------------------------------------------------------------------
 start() ->
-    gen_slave:start_link({local, ?MODULE}, ?MODULE, [?PORT, ?DEVICE_NUM], []).
+    gen_modbus_s:start_link({local, ?MODULE}, ?MODULE, [?PORT, ?DEVICE_NUM], []).
 
 %%% ---------------------------------------------------------------------------
-%%% @doc stop gen slave.
+%%% @doc stop gen modbus slave.
 %%% @end
 %%% ---------------------------------------------------------------------------
 stop() ->
-    gen_slave:stop(?MODULE).
+    gen_modbus_s:stop(?MODULE).
 
 %%% ---------------------------------------------------------------------------
 %%% @doc change indicator on the alarm panel (Status => off | on, Type => 1..5)
@@ -59,17 +59,17 @@ stop() ->
 %%% @end
 %%% ---------------------------------------------------------------------------
 alarm(Status, Type) when Type =< ?ALARM_NUM ->
-    gen_slave:cast(?MODULE, {alarm, Status, Type}).
+    gen_modbus_s:cast(?MODULE, {alarm, Status, Type}).
 
 %%% ---------------------------------------------------------------------------
-%%% @doc return state list of coil registers => [1, 2, 3, 4, 5].
+%%% @doc return state of coils registers.
 %%% @end
 %%% ---------------------------------------------------------------------------
 status() ->
-    gen_slave:call(?MODULE, get_status).
+    gen_modbus_s:call(?MODULE, get_status).
 
 %%% ---------------------------------------------------------------------------
-%%% @doc init gen_slave with default state.
+%%% @doc init gen_modbus_s with default state.
 %%% @end
 %%% ---------------------------------------------------------------------------
 init([]) ->
@@ -82,10 +82,10 @@ init([]) ->
 connect(Sock, #s{allowed_connections = Connections, active_socks = ASocks} = S) ->
     case Connections > 0 of
         true ->
-            logger:info("Alarm panel connected to ~w.~n", [Sock]),
+            error_logger:info_msg("Alarm panel connected to ~w.~n", [Sock]),
             {ok, [#wait_connect{}], S#s{active_socks = [Sock | ASocks], allowed_connections = Connections - 1}};
         _ ->
-            logger:info("Alarm panel connections limit reached.~n"),
+            error_logger:info_msg("Alarm panel connections limit reached.~n"),
             {ok, [], S}
     end.
 
@@ -94,8 +94,13 @@ connect(Sock, #s{allowed_connections = Connections, active_socks = ASocks} = S) 
 %%% @end
 %%% ---------------------------------------------------------------------------
 disconnect(Sock, Reason, #s{active_socks = ASocks, allowed_connections = Connections} = S) ->
-    logger:info("Alarm panel disconnected because ~w from ~w.~n", [Reason, Sock]),
-    {ok, [#wait_connect{}], S#s{active_socks = lists:delete(Sock, ASocks), allowed_connections = Connections + 1}}.
+    case Sock of
+        undefined ->
+            {ok, [#wait_connect{}], S#s{allowed_connections = Connections + 1}};
+        _ ->
+            error_logger:info_msg("Alarm panel disconnected because ~w from ~w.~n", [Reason, Sock]),
+            {ok, [#wait_connect{}], S#s{active_socks = lists:delete(Sock, ASocks), allowed_connections = Connections + 1}}
+    end.
 
 %%% ---------------------------------------------------------------------------
 %%% @doc receive write and read coils message and send confirm message, on
@@ -144,8 +149,8 @@ message(#undefined_code{response = Resp}, Socket, S) ->
 handle_call(get_status, _From, #s{coils = C} = S) ->
     {reply, C, [], S};
 
-handle_call(Msg, _From, S) ->
-    {reply, Msg, [], S}.
+handle_call(_Msg, _From, S) ->
+    {noreply, [], S}.
 
 %%% ---------------------------------------------------------------------------
 %%% @doc change alarm coil.
@@ -164,7 +169,7 @@ handle_cast({alarm, off, Num}, #s{coils = C} = S) ->
 %%% @end
 %%% ---------------------------------------------------------------------------
 handle_cast(Request, S) ->
-    logger:notice("Alarm panel receive unknown call request ~w.~n", [Request]),
+    error_logger:info_msg("Alarm panel receive unknown call request ~w.~n", [Request]),
     {noreply, [], S}.
 
 %%% ---------------------------------------------------------------------------
@@ -180,11 +185,11 @@ handle_info(_Info, S) ->
     {noreply, [], S}.
 
 %%% ---------------------------------------------------------------------------
-%%% @doc terminate calls when gen_slave terminated.
+%%% @doc terminate calls when gen_modbus_s terminated.
 %%% @enddoc
 %%% ---------------------------------------------------------------------------
 terminate(Reason, S) ->
-    logger:info("Alarm panel terminated, reason: ~w, S: ~w.~n", [Reason, S]),
+    error_logger:info_msg("Alarm panel terminated, reason: ~w, S: ~w.~n", [Reason, S]),
     ok.
 
 %%% ---------------------------------------------------------------------------

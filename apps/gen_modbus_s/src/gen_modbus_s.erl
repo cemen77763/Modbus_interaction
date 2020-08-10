@@ -2,11 +2,11 @@
 %%% @doc Slave modbus TCP device behaviour
 %%% @enddoc
 %%% ---------------------------------------------------------------------------
--module(gen_slave).
+-module(gen_modbus_s).
 
 -behaviour(gen_server).
 
--include("gen_slave.hrl").
+-include("gen_modbus_s.hrl").
 
 -define(DEFAULT_PORT, 502).
 
@@ -54,9 +54,40 @@
     }).
 
 %%% ---------------------------------------------------------------------------
-%%% API
+%%% @doc
+%%%   The work flow (of the modbus slave) can be described as follows:
+%%%
+%%%   User module                          Generic
+%%%   -----------                          -------
+%%%     start_link       ----->             start_link
+%%%     init             <-----              .
+%%%     Command          ----->              .
+%%%
+%%%     message          <-----              .
+%%%     Command          ----->              .
+%%%
+%%%     connect          <-----              .
+%%%     Command          ----->              .
+%%%
+%%%     disconnect       <-----              .
+%%%     Command          ----->              .
+%%%
+%%%     handle_call      <-----              .
+%%%                      ----->             reply
+%%%     Command          ----->              .
+%%%
+%%%     handle_cast      <-----              .
+%%%     Command          ----->              .
+%%%
+%%%     handle_info      <-----              .
+%%%     Command          ----->              .
+%%%
+%%%     terminate        <-----              .
+%%%     Command          ----->              .
+%%%
+%%%                      ----->             reply
+%%%@enddoc
 %%% ---------------------------------------------------------------------------
-
 -callback init(Args :: term()) ->
     {ok, Command :: cmd(), State :: term()} | {ok, Command :: cmd(), State :: term(), timeout() | hibernate | {continue, term()}} |
     {stop, Reason :: term()} | ignore.
@@ -88,7 +119,7 @@
     {ok, Command :: cmd(), NewState :: term()} |
     {stop, Reason :: term(), Command :: cmd(), NewState :: term()}.
 
--callback disconnect(Socket :: gen_tcp:socket() | all, Reason :: econnrefused | normal | socket_closed | shutdown | term(), State :: term()) ->
+-callback disconnect(Socket :: gen_tcp:socket() | undefined | all, Reason :: econnrefused | normal | socket_closed | shutdown | term(), State :: term()) ->
     {ok, Command :: cmd(), NewState :: term()} |
     {stop, Reason :: term(), Command :: cmd(), NewState :: term()}.
 
@@ -101,6 +132,10 @@
 
 -optional_callbacks([terminate/2]).
 
+%% ----------------------------------------------------------------------------
+%% @doc start a gen slave.
+%% @enddoc
+%% ----------------------------------------------------------------------------
 -spec start_link(Module::atom(), [Args::term()], [Options::gen_server:options()]) ->
     {ok, Pid::pid()} | ignore | {error, Reason::term()}.
 start_link(Mod, Args, Options) ->
@@ -111,10 +146,18 @@ start_link(Mod, Args, Options) ->
 start_link(Name, Mod, Args, Options) ->
     gen_server:start_link(Name, ?MODULE, [Mod, Args], Options).
 
+%% ----------------------------------------------------------------------------
+%% @doc make a cast to gen slave.
+%% @enddoc
+%% ----------------------------------------------------------------------------
 -spec cast(Name::gen_server:name(), Message::term()) -> ok.
 cast(Name, Message) ->
     gen_server:cast(Name, Message).
 
+%% ----------------------------------------------------------------------------
+%% @doc make a call to gen slave.
+%% @enddoc
+%% ----------------------------------------------------------------------------
 -spec call(Name::gen_server:name(), Message::term()) -> Reply::term().
 call(Name, Message) ->
     gen_server:call(Name, Message).
@@ -123,6 +166,10 @@ call(Name, Message) ->
 call(Name, Message, Timeout) ->
     gen_server:call(Name, Message, Timeout).
 
+%% ----------------------------------------------------------------------------
+%% @doc stop a gen slave.
+%% @enddoc
+%% ----------------------------------------------------------------------------
 -spec stop(Name::gen_server:name()) -> ok.
 stop(Name) ->
     gen_server:stop(Name).
@@ -148,7 +195,7 @@ init([Mod, [_Port, _DevNum | Args]] = A) ->
 init_it({ok, Command, SS}, [Mod, [Port, DevNum | _Args]]) ->
     case gen_tcp:listen(Port, ?DEFAULT_SOCK_OPTS) of
         {error, Reason} ->
-            logger:error("Gen slave can't open listen socket"),
+            error_logger:error_msg("Gen slave can't open listen socket"),
             {stop, {listen_socket, Reason}};
         {ok, LSock} ->
             case cmd(Command, #s{state = SS, stage = init, mod = Mod, device = DevNum, listen_sock = LSock, buff = maps:new()}) of
@@ -161,7 +208,7 @@ init_it({ok, Command, SS}, [Mod, [Port, DevNum | _Args]]) ->
 init_it({ok, Command, SS, Timeout}, [Mod, [Port, DevNum | _Args]]) ->
     case gen_tcp:listen(Port, ?DEFAULT_SOCK_OPTS) of
         {error, Reason} ->
-            logger:error("Gen slave can't open listen socket"),
+            error_logger:error_msg("Gen slave can't open listen socket"),
             {stop, {listen_socket, Reason}};
         {ok, LSock} ->
             case cmd(Command, #s{state = SS, stage = init, mod = Mod, device = DevNum, listen_sock = LSock, buff = maps:new()}) of
@@ -172,7 +219,7 @@ init_it({ok, Command, SS, Timeout}, [Mod, [Port, DevNum | _Args]]) ->
             end
     end;
 init_it({stop, Reason}, _A) ->
-    logger:error("Gen slave stopped"),
+    error_logger:error_msg("Gen slave stopped"),
     {stop, Reason};
 init_it(ignore, _A) ->
     ignore;
@@ -429,12 +476,12 @@ handle_info({tcp, Sock, Data}, S)->
 %% @enddoc
 %% ----------------------------------------------------------------------------
 handle_info({tcp_closed, Sock}, #s{buff = Buff} = S) ->
-    case maps:is_key(Sock, Buff) of
-        true ->
+    case maps:take(Sock, Buff) of
+        {_Val, Buff2} ->
             gen_tcp:close(Sock),
             Res = disconnect_it(Sock, connection_closed, S),
             S2 = check_connections(S),
-            resp_it(Res, S2#s{buff = maps:remove(Sock, Buff)});
+            resp_it(Res, S2#s{buff = Buff2});
         _ ->
             {noreply, S}
     end;
@@ -517,7 +564,7 @@ disconnect_it(Sock, Reason, S) ->
 %% @enddoc
 %% ----------------------------------------------------------------------------
 cmd([#wait_connect{} | T], S) ->
-    spawn_link(gen_slave, wait_connect, [self(), S#s.listen_sock]),
+    spawn_link(gen_modbus_s, wait_connect, [self(), S#s.listen_sock]),
     cmd(T, S);
 
 cmd([#disconnect{socket = Sock, reason = Reason} | T], #s{stage = connect, buff = Buff} = S) ->
@@ -572,7 +619,7 @@ wait_connect(From, LSock) ->
             gen_tcp:controlling_process(Sock, From),
             gen_server:cast(From, {connect, Sock});
         {error, Reason} ->
-            gen_server:cast(From, {connect_error, Reason, undefined})
+            gen_server:cast(From, {connect_error, Reason})
     end.
 
 %% ----------------------------------------------------------------------------
@@ -586,7 +633,7 @@ cmd_disconnect(T, Sock, Reason, S) ->
 cmd_disconnect_({ok, Command, SS}, T, #s{stage = {stop, Reason}} = S) ->
     cmd(Command ++ T, S#s{state = SS, stage = {stop, Reason}});
 cmd_disconnect_({ok, Command, SS}, T, S) ->
-    cmd(Command ++ T, S#s{state = SS, stage = disconnect});
+    cmd(Command ++ T, S#s{state = SS});
 cmd_disconnect_({stop, Reason, Command, SS}, T, S) ->
     cmd(Command ++ T, S#s{state = SS, stage = {stop, Reason}});
 cmd_disconnect_({'EXIT', Class, Reason2, Strace}, _T, _S) ->

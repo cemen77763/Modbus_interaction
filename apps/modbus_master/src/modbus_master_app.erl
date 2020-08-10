@@ -23,7 +23,7 @@ start(_StartType, _StartArgs) ->
     start_link().
 
 stop(_State) ->
-    gen_master:stop(?MASTER).
+    gen_modbus_m:stop(?MASTER).
 
 start_link() ->
     supervisor:start_link({local, ?MODULE}, ?MODULE, []).
