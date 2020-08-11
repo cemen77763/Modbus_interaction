@@ -467,8 +467,12 @@ check_connections(S) ->
 %% @enddoc
 %% ----------------------------------------------------------------------------
 handle_info({tcp, Sock, Data}, S)->
-    maps:is_key(Sock, S#s.buff) andalso
-        parser(Data, Sock, S);
+    case maps:is_key(Sock, S#s.buff) of
+        true ->
+            parser(Data, Sock, S);
+        _ ->
+            {noreply, S}
+    end;
 
 %% ----------------------------------------------------------------------------
 %% @doc when socket of master device closed receive {tcp_closed, Socket}
